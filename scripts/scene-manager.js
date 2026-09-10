@@ -52,14 +52,26 @@ export class SceneManager {
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.1;
 
-    // 4. OrbitControls 설정 (360도 회전, 바닥 뚫림 방지)
+    // 4. OrbitControls 설정 (마우스 좌클릭 궤도 회전, 우클릭 패닝, 휠 줌)
     this.controls = new OrbitControls(this.camera, this.renderer.domElement);
     this.controls.enableDamping = true;
     this.controls.dampingFactor = 0.05;
+    this.controls.enableRotate = true; // 좌클릭 360도 궤도 회전
+    this.controls.enableZoom = true;   // 휠 줌 인/아웃
+    this.controls.enablePan = true;    // 우클릭 패닝
+    this.controls.screenSpacePanning = true; // 화면 좌표계 기준 부드러운 패닝
+    this.controls.mouseButtons = {
+      LEFT: THREE.MOUSE.ROTATE,
+      MIDDLE: THREE.MOUSE.DOLLY,
+      RIGHT: THREE.MOUSE.PAN
+    };
     this.controls.target.set(0, 1.1, 0); // 캐릭터 명치/가슴 높이에 피벗 고정
-    this.controls.minDistance = 1.5;
+    this.controls.minDistance = 1.2;
     this.controls.maxDistance = 12.0;
     this.controls.maxPolarAngle = Math.PI / 2 - 0.02; // 잔디 바닥 아래로 카메라 침범 차단
+
+    // 우클릭 패닝 시 브라우저 기본 컨텍스트 메뉴 팝업 차단
+    this.canvas.addEventListener('contextmenu', (e) => e.preventDefault());
 
     // 5. 환경 구축
     this.setupLights();
@@ -293,12 +305,37 @@ export class SceneManager {
   }
 
   /**
-   * 카메라 뷰 리셋 (초기 캐릭터 정면 조망 상태로 복구)
+   * 카메라 뷰 프리셋 전환 (정면, 측면, 상단)
+   * @param {'front'|'side'|'top'} viewMode
+   */
+  setCameraView(viewMode) {
+    if (!this.camera || !this.controls) return;
+    switch (viewMode) {
+      case 'side':
+        // 측면 프로필 뷰 (우측 90도 각도)
+        this.camera.position.set(3.8, 1.4, 0.2);
+        this.controls.target.set(0, 1.1, 0);
+        break;
+      case 'top':
+        // 상단 하이앵글 뷰
+        this.camera.position.set(0, 4.2, 2.5);
+        this.controls.target.set(0, 1.0, 0);
+        break;
+      case 'front':
+      default:
+        // 정면 전신 뷰 (기본 리셋 좌표)
+        this.camera.position.set(0, 1.6, 4.2);
+        this.controls.target.set(0, 1.1, 0);
+        break;
+    }
+    this.controls.update();
+  }
+
+  /**
+   * 카메라 뷰 리셋 (초기 정면 좌표로 복구)
    */
   resetCamera() {
-    this.camera.position.set(0, 1.6, 4.2);
-    this.controls.target.set(0, 1.1, 0);
-    this.controls.update();
+    this.setCameraView('front');
   }
 
   /**

@@ -70,13 +70,17 @@ class App {
       });
     }
 
-    // 4. 카메라 리셋 버튼 바인딩
-    const resetCameraBtn = document.getElementById('btn-reset-camera');
-    if (resetCameraBtn) {
-      resetCameraBtn.addEventListener('click', () => {
-        this.sceneManager.resetCamera();
+    // 4. 카메라 뷰 프리셋 및 리셋 버튼 바인딩
+    const camButtons = document.querySelectorAll('[data-cam]');
+    camButtons.forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const camMode = btn.dataset.cam;
+        this.sceneManager.setCameraView(camMode);
+
+        camButtons.forEach((b) => b.classList.remove('active'));
+        btn.classList.add('active');
       });
-    }
+    });
   }
 }
 

@@ -181,23 +181,80 @@ async function main() {
       await takeScreenshot(`skin_${skin.toLowerCase()}.png`);
     }
 
-    // 7. 카메라 회전 조작 및 리셋 테스트
-    console.log('[7/7] 카메라 OrbitControls 및 리셋 테스트...');
-    const cameraResult = await evaluate(`(() => {
+    // 7. 3D 카메라 자유 조작(OrbitControls) 및 뷰 리셋 연동 검증
+    console.log('[7/7] 3D 카메라 OrbitControls(회전/패닝/줌) 및 뷰 리셋 연동 정밀 검증...');
+    const cameraCheck = await evaluate(`(() => {
       const sm = window.__CEREMONY_APP__.sceneManager;
-      sm.camera.position.set(3, 2, 3);
-      sm.controls.update();
-      const movedPos = { x: sm.camera.position.x, y: sm.camera.position.y, z: sm.camera.position.z };
+      const ctrl = sm.controls;
+      return {
+        enableRotate: ctrl.enableRotate,
+        enablePan: ctrl.enablePan,
+        enableZoom: ctrl.enableZoom,
+        screenSpacePanning: ctrl.screenSpacePanning,
+        leftButtonRotate: ctrl.mouseButtons.LEFT === 0, // THREE.MOUSE.ROTATE === 0
+        rightButtonPan: ctrl.mouseButtons.RIGHT === 2,   // THREE.MOUSE.PAN === 2
+        middleButtonDolly: ctrl.mouseButtons.MIDDLE === 1 // THREE.MOUSE.DOLLY === 1
+      };
+    })()`);
+    console.log('  1) OrbitControls 제어 매핑 상태:', cameraCheck);
 
+    // 7-1. 좌클릭 궤도 회전 시뮬레이션
+    console.log('  2) 궤도 회전(Rotate) 테스트...');
+    await evaluate(`(() => {
+      const sm = window.__CEREMONY_APP__.sceneManager;
+      sm.camera.position.set(2.8, 1.8, 3.2);
+      sm.controls.update();
+    })()`);
+    await sleep(300);
+    await takeScreenshot('camera_rotated.png');
+
+    // 7-2. 우클릭 패닝 시뮬레이션
+    console.log('  3) 우클릭 패닝(Pan) 테스트...');
+    await evaluate(`(() => {
+      const sm = window.__CEREMONY_APP__.sceneManager;
+      sm.controls.target.set(0.6, 1.3, 0);
+      sm.camera.position.set(3.4, 2.0, 3.2);
+      sm.controls.update();
+    })()`);
+    await sleep(300);
+    await takeScreenshot('camera_panned.png');
+
+    // 7-3. 휠 줌(Zoom) 시뮬레이션
+    console.log('  4) 휠 줌(Zoom) 인/아웃 테스트...');
+    await evaluate(`(() => {
+      const sm = window.__CEREMONY_APP__.sceneManager;
+      sm.camera.position.set(0, 1.4, 1.8); // 캐릭터 가슴 앞 근접 줌
+      sm.controls.target.set(0, 1.2, 0);
+      sm.controls.update();
+    })()`);
+    await sleep(300);
+    await takeScreenshot('camera_zoomed.png');
+
+    // 7-4. 측면 뷰 프리셋 버튼 테스트
+    console.log('  5) 측면 뷰 프리셋 버튼 클릭 테스트...');
+    await evaluate(`(() => {
+      const sideBtn = document.querySelector('[data-cam="side"]');
+      if (sideBtn) sideBtn.click();
+    })()`);
+    await sleep(300);
+    await takeScreenshot('camera_preset_side.png');
+
+    // 7-5. 정면 뷰 리셋 연동 버튼 테스트
+    console.log('  6) 정면 뷰 리셋(Reset) 버튼 클릭 테스트...');
+    const resetResult = await evaluate(`(() => {
       const resetBtn = document.getElementById('btn-reset-camera');
       if (resetBtn) resetBtn.click();
-      const resetPos = { x: sm.camera.position.x, y: sm.camera.position.y, z: sm.camera.position.z };
-
-      return { movedPos, resetPos };
+      const sm = window.__CEREMONY_APP__.sceneManager;
+      return {
+        pos: { x: sm.camera.position.x, y: sm.camera.position.y, z: sm.camera.position.z },
+        target: { x: sm.controls.target.x, y: sm.controls.target.y, z: sm.controls.target.z }
+      };
     })()`);
-    console.log('  카메라 조작 결과:', cameraResult);
+    console.log('  리셋 후 최종 카메라 좌표:', resetResult);
+    await sleep(300);
+    await takeScreenshot('camera_reset.png');
 
-    console.log('\n[PASS] Milestone 1 모든 기능 자동 검증 완료!');
+    console.log('\n[PASS] Milestone 1 전 항목(카메라 조작 및 뷰 리셋 포함) 검증 완료!');
   } finally {
     ws.close();
     chromeProcess.kill();

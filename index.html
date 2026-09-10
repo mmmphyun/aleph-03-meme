@@ -131,12 +131,22 @@
       <!-- 4. 카메라 제어 섹션 -->
       <div class="panel-section">
         <div class="section-title">
-          <span>🎥 카메라 뷰</span>
+          <span>🎥 3D 카메라 조작 &amp; 뷰 프리셋</span>
         </div>
-        <button type="button" class="btn" id="btn-reset-camera" style="width: 100%;">
-          <strong>정면 시점 리셋</strong>
-          <span class="btn-sub">초기 위치(0, 1.6, 4.2)로 정렬</span>
-        </button>
+        <div class="btn-grid-3">
+          <button type="button" class="btn active" data-cam="front" id="btn-reset-camera">
+            <strong>정면 (리셋)</strong>
+            <span class="btn-sub">기본 전신</span>
+          </button>
+          <button type="button" class="btn" data-cam="side">
+            <strong>측면 뷰</strong>
+            <span class="btn-sub">우측 90°</span>
+          </button>
+          <button type="button" class="btn" data-cam="top">
+            <strong>상단 뷰</strong>
+            <span class="btn-sub">하이앵글</span>
+          </button>
+        </div>
       </div>
 
       <!-- 5. 향후 마일스톤 예고 정보 (T03-C03 구조적 선행 배치) -->
