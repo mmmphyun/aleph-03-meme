@@ -20,27 +20,65 @@
   <header class="app-header">
     <div class="brand">
       <span class="brand-title">⚽ 축구장 세레모니 제조기</span>
-      <span class="brand-badge">Milestone 2</span>
+      <span class="brand-badge">Milestone 3</span>
     </div>
     <div class="header-status">
-      사진 업로드 &amp; 타원형 얼굴 크롭 텍스처 합성 스튜디오
+      화면비(1:1, 4:5, 9:16) &amp; 2D 문구 &amp; 파일 일치 다운로드 스튜디오
     </div>
   </header>
 
   <!-- 메인 작업 영역 -->
   <main class="app-main">
     <!-- 3D 뷰포트 영역 -->
-    <section class="viewport-container" aria-label="3D 축구장 뷰포트">
-      <div class="viewport-canvas-wrapper">
-        <canvas id="three-canvas"></canvas>
+    <section class="viewport-container" aria-label="3D 축구장 뷰포트" id="viewport-container">
+      <!-- 뷰포트 상단 화면비 툴바 (1:1, 4:5, 9:16) -->
+      <div class="viewport-ratio-bar">
+        <div class="ratio-button-group" role="group" aria-label="화면비 선택">
+          <span class="ratio-bar-label">📐 화면비</span>
+          <button type="button" class="btn-ratio active" data-ratio="1:1" aria-pressed="true">
+            <strong>1:1</strong>
+            <span>정방형</span>
+          </button>
+          <button type="button" class="btn-ratio" data-ratio="4:5" aria-pressed="false">
+            <strong>4:5</strong>
+            <span>인스타 피드</span>
+          </button>
+          <button type="button" class="btn-ratio" data-ratio="9:16" aria-pressed="false">
+            <strong>9:16</strong>
+            <span>스토리/숏폼</span>
+          </button>
+        </div>
+        <div class="resolution-badge" id="current-res-badge">1080 × 1080 px</div>
       </div>
+
+      <!-- 뷰포트 캔버스 래퍼 (Three.js 3D 캔버스 + 투명 2D 텍스트 오버레이 캔버스) -->
+      <div class="viewport-canvas-wrapper" id="viewport-canvas-wrapper" data-ratio="1:1">
+        <canvas id="three-canvas"></canvas>
+        <canvas id="text-overlay-canvas"></canvas>
+      </div>
+
       <div class="viewport-hint">
-        🖱️ 좌클릭 드래그: 360° 카메라 회전 | 휠: 줌 인/아웃 | 우클릭: 시점 이동
+        🖱️ 좌클릭 드래그: 360° 카메라 회전 | 휠: 줌 인/아웃 | 우클릭: 시점 이동 (패닝)
       </div>
     </section>
 
     <!-- 우측 컨트롤 사이드바 -->
     <aside class="control-panel" aria-label="스튜디오 컨트롤 패널">
+      <!-- 0. [Milestone 3] 고해상도 PNG 다운로드 섹션 -->
+      <div class="panel-section" id="section-download">
+        <div class="section-title">
+          <span>📥 완성작 다운로드</span>
+          <span class="badge-status">M3</span>
+        </div>
+        <button type="button" class="btn btn-primary btn-lg btn-block" id="btn-download-png">
+          <strong>💾 고해상도 PNG 다운로드</strong>
+          <span class="btn-sub" id="btn-download-sub">1080 × 1080 px (화면 구도 100% 일치)</span>
+        </button>
+        <div id="download-status-msg" class="download-status-hint">
+          ✓ 현재 화면 3D 카메라 구도와 2D 문구가 100% 동일하게 합성됩니다.
+        </div>
+      </div>
+
       <!-- 1. [T03-C03/C04/C05] 얼굴 사진 업로드 & 타원형 크롭 합성 섹션 (이미지 편집 도구) -->
       <div class="panel-section" id="section-image-editor">
         <div class="section-title">
@@ -93,36 +131,84 @@
         </div>
       </div>
 
-      <!-- 2. [T03-C03] 문구 편집 도구 섹션 (첫 화면 선행 배치) -->
+      <!-- 2. [T03-C03/C06/C07/C08/C14] 문구 편집 도구 섹션 (첫 화면 선행 배치) -->
       <div class="panel-section" id="section-text-editor">
         <div class="section-title">
           <span>💬 문구 편집 도구 (텍스트)</span>
-          <span class="badge-status">M3 준비</span>
+          <span class="badge-status">M3</span>
         </div>
-        <div class="text-editor-preview-hint">
-          <input
-            type="text"
+        <div class="text-editor-controls">
+          <textarea
             id="text-caption-input"
-            class="text-input"
+            class="text-input caption-textarea"
+            rows="2"
             placeholder="세레모니 문구를 입력하세요"
-            value="오늘 밤 주인공은 나야 나!"
-            maxlength="60"
             aria-label="세레모니 문구 입력"
-          >
-          <div class="slider-label-row" style="margin-top: 8px;">
+          >오늘 밤 주인공은 나야 나!</textarea>
+
+          <!-- 폰트 크기 조절 슬라이더 (T03-C07) -->
+          <div class="slider-label-row" style="margin-top: 10px;">
             <span>폰트 크기</span>
-            <span class="slider-value" id="text-size-val">36px</span>
+            <span class="slider-value" id="text-size-val">48px</span>
           </div>
           <input
             type="range"
             id="text-size-slider"
             class="range-input"
-            min="18"
-            max="64"
+            min="12"
+            max="140"
             step="2"
-            value="36"
+            value="48"
             aria-label="폰트 크기 조절"
           >
+
+          <!-- 폰트 색상 피커 및 퀵 프리셋 스와치 (T03-C08) -->
+          <div class="slider-label-row" style="margin-top: 10px;">
+            <span>문구 색상</span>
+            <span class="slider-value" id="text-color-val">#FFFFFF</span>
+          </div>
+          <div class="color-picker-row">
+            <input
+              type="color"
+              id="text-color-picker"
+              class="color-input"
+              value="#ffffff"
+              aria-label="문구 색상 선택"
+            >
+            <div class="color-swatches" role="group" aria-label="색상 프리셋">
+              <button type="button" class="swatch-btn active" data-color="#ffffff" style="background-color: #ffffff;" title="흰색"></button>
+              <button type="button" class="swatch-btn" data-color="#ffe600" style="background-color: #ffe600;" title="노랑"></button>
+              <button type="button" class="swatch-btn" data-color="#ff3b30" style="background-color: #ff3b30;" title="빨강"></button>
+              <button type="button" class="swatch-btn" data-color="#39ff14" style="background-color: #39ff14;" title="형광초록"></button>
+              <button type="button" class="swatch-btn" data-color="#00e5ff" style="background-color: #00e5ff;" title="시안"></button>
+              <button type="button" class="swatch-btn" data-color="#ff007f" style="background-color: #ff007f;" title="핫핑크"></button>
+            </div>
+          </div>
+
+          <!-- 문구 세로 위치(Y축) 조절 슬라이더 및 퀵 버튼 (T03-C06) -->
+          <div class="slider-label-row" style="margin-top: 10px;">
+            <span>세로 위치 (Y축)</span>
+            <span class="slider-value" id="text-y-val">85%</span>
+          </div>
+          <input
+            type="range"
+            id="text-y-slider"
+            class="range-input"
+            min="0.05"
+            max="0.95"
+            step="0.01"
+            value="0.85"
+            aria-label="문구 세로 위치 조절"
+          >
+          <div class="btn-grid-3" style="margin-top: 6px;">
+            <button type="button" class="btn btn-sm" data-y="0.15">상단 (15%)</button>
+            <button type="button" class="btn btn-sm" data-y="0.50">중앙 (50%)</button>
+            <button type="button" class="btn btn-sm active" data-y="0.85">하단 (85%)</button>
+          </div>
+
+          <div class="text-hint-badge" style="margin-top: 10px;">
+            💡 캔버스 폭 초과 시 자동 줄바꿈(Word wrap) 적용 (T03-C14)
+          </div>
         </div>
       </div>
 
@@ -230,6 +316,16 @@
           <button type="button" class="btn" data-cam="top">
             <strong>상단 뷰</strong>
             <span class="btn-sub">하이앵글</span>
+          </button>
+        </div>
+        <div class="btn-grid" style="margin-top: 6px;">
+          <button type="button" class="btn" data-cam="low">
+            <strong>역동적 로우앵글</strong>
+            <span class="btn-sub">올려다보기</span>
+          </button>
+          <button type="button" class="btn" data-cam="closeup">
+            <strong>대두 얼빡샷</strong>
+            <span class="btn-sub">얼굴 초근접</span>
           </button>
         </div>
       </div>

@@ -292,11 +292,13 @@ export class SceneManager {
 
   /**
    * 뷰포트 크기 변경 시 카메라 및 렌더러 동기화
+   * @param {number} [customWidth] - 수동 지정 가로 폭
+   * @param {number} [customHeight] - 수동 지정 세로 높이
    */
-  onResize() {
+  resize(customWidth, customHeight) {
     if (!this.canvas || !this.renderer || !this.camera) return;
-    const width = this.canvas.clientWidth;
-    const height = this.canvas.clientHeight;
+    const width = customWidth || this.canvas.clientWidth;
+    const height = customHeight || this.canvas.clientHeight;
     if (width === 0 || height === 0) return;
 
     this.camera.aspect = width / height;
@@ -305,8 +307,41 @@ export class SceneManager {
   }
 
   /**
-   * 카메라 뷰 프리셋 전환 (정면, 측면, 상단)
-   * @param {'front'|'side'|'top'} viewMode
+   * 윈도우 리사이즈 이벤트 핸들러
+   */
+  onResize() {
+    this.resize();
+  }
+
+  /**
+   * 고해상도 캔버스에 현재 3D 뷰포트 프레임을 왜곡 없이 동일 구도로 렌더링
+   * @param {HTMLCanvasElement} targetCanvas - 복사 대상 2D 캔버스
+   * @param {number} targetW - 목표 가로 해상도 (예: 1080)
+   * @param {number} targetH - 목표 세로 해상도 (예: 1080, 1350, 1920)
+   */
+  renderFrameToCanvas(targetCanvas, targetW, targetH) {
+    if (!this.renderer || !this.scene || !this.camera) return;
+
+    // 현재 화면 크기 백업
+    const prevW = this.canvas.clientWidth;
+    const prevH = this.canvas.clientHeight;
+
+    // 렌더러 크기를 내보내기 해상도로 임시 확장 후 즉시 1프레임 렌더
+    this.renderer.setSize(targetW, targetH, false);
+    this.renderer.render(this.scene, this.camera);
+
+    // 대상 2D 컨텍스트에 픽셀 전송
+    const ctx = targetCanvas.getContext('2d');
+    ctx.drawImage(this.canvas, 0, 0, targetW, targetH);
+
+    // 렌더러 크기를 원래 브라우저 뷰포트 크기로 원복
+    this.renderer.setSize(prevW, prevH, false);
+    this.renderer.render(this.scene, this.camera);
+  }
+
+  /**
+   * 카메라 뷰 프리셋 전환 (정면, 측면, 상단, 로우앵글, 얼빡샷)
+   * @param {'front'|'side'|'top'|'low'|'closeup'} viewMode
    */
   setCameraView(viewMode) {
     if (!this.camera || !this.controls) return;
@@ -320,6 +355,16 @@ export class SceneManager {
         // 상단 하이앵글 뷰
         this.camera.position.set(0, 4.2, 2.5);
         this.controls.target.set(0, 1.0, 0);
+        break;
+      case 'low':
+        // 역동적 로우앵글 뷰 (웅장한 올려다보기)
+        this.camera.position.set(0, 0.45, 2.8);
+        this.controls.target.set(0, 1.2, 0);
+        break;
+      case 'closeup':
+        // 대두 얼빡샷 뷰 (얼굴 밀착)
+        this.camera.position.set(0, 1.55, 1.6);
+        this.controls.target.set(0, 1.55, 0);
         break;
       case 'front':
       default:
