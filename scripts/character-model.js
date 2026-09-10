@@ -1,12 +1,21 @@
 /**
  * @file character-model.js
  * @description 볼 조인트 기반 프로 축구선수 체형 로우폴리 마네킹 캐릭터 모델
- * - 프로 남자 축구선수 역삼각형 체형 (넓은 어깨 + 슬림하고 단단한 골반 + 탄탄한 허벅지)
+ * - 프로 남자 축구선수 역삼각형 체형 (넓은 어깨 + 슬림하고 단단한 골반 + 탄탄한 대퇴부)
+ * - 관절 및 신체 부위 간 클리핑(파고듦/겹침) 방지 정밀 오프셋 설계
  * - 두상 표면 입체 굴곡에 정사영(Planar Projection)으로 완전 밀착 래핑되는 얼굴 텍스처
  * - 관절 결손 없는 볼 조인트(Ball-joint) 인체 연결
- * - 엄지 및 손가락 분할 손(Hand) 메쉬 구조
+ * - 엄지 및 손가락 분할 손(Hand) 구조
  * - 3대 콘셉트 스킨 스왑 (CLASSIC_DAISY, RETRO_JERSEY, GOLDEN_TROPHY)
- * - 4대 챌린지 포즈 (거제 야호: 한 손 확성기 + 한 손 갸루피스 + 한쪽 다리 들기)
+ * - 바이럴 세레모니 & 챌린지 포즈 프리셋:
+ *   1. RONALDO_SIU (호날두 시우)
+ *   2. SON_CAMERA (손흥민 손 카메라 찰칵)
+ *   3. GRIEZMANN_HOTLINE (그리즈만 핫라인 전화기 댄스)
+ *   4. BELLINGHAM_ARMS (벨링엄 황제 양팔 벌리기)
+ *   5. GEOJE_YAHO (리센느 미나미 거제 야호: 한손 확성기 + 갸루피스 + 외다리)
+ *   6. CHOI_SAN_BAD (에이티즈 최산 BAD: 턱선 쓸어올리기 + 치명적 어깨 꺾기)
+ *   7. CUTE_HEART (축구장 볼하트)
+ *   8. DEFAULT (프로 축구선수 기본 스탠스)
  */
 import * as THREE from 'three';
 
@@ -95,7 +104,7 @@ export class CharacterModel {
     ctx.arc(cx + eyeDist + 12, eyeY + 6, 5, 0, Math.PI * 2);
     ctx.fill();
 
-    // 홍조
+    // 볼터치
     ctx.fillStyle = 'rgba(255, 115, 130, 0.4)';
     ctx.beginPath();
     ctx.ellipse(cx - 150, 535, 45, 25, 0, 0, Math.PI * 2);
@@ -115,7 +124,7 @@ export class CharacterModel {
   }
 
   /**
-   * 로우폴리곤 메쉬 생성 헬퍼
+   * 로우폴리 메쉬 생성 헬퍼
    */
   createPolyMesh(geo, category = 'skin', customMat = null) {
     const mat = customMat || new THREE.MeshStandardMaterial({
@@ -145,22 +154,18 @@ export class CharacterModel {
 
   /**
    * 프로 남자 축구선수 체형 인체 모델링 조립
-   * - 넓은 흉곽과 어깨 프레임 (역삼각형 상체)
-   * - 좁고 단단한 남자 골반 (여성형 모래시계 골반 탈피)
-   * - 탄탄한 대퇴부와 종아리
    */
   initModel() {
     this.group.position.set(0, 0, 0);
 
-    // 1. 골반 (Hips - 남성 축구선수용 슬림 & 단단한 골반)
+    // 1. 골반 (Hips - 슬림하고 단단한 남성형 골반)
     const hipsGroup = new THREE.Group();
     hipsGroup.position.set(0, 0.94, 0);
     this.group.add(hipsGroup);
     this.joints.hips = hipsGroup;
 
-    // 골반 너비를 0.18 -> 0.135로 대폭 축소하여 남성 골반 비율 형성
     const hipsGeo = new THREE.CylinderGeometry(0.14, 0.12, 0.19, 8);
-    hipsGeo.scale(1.0, 1.0, 0.85); // 앞뒤 납작하고 단단한 축구선수 힙
+    hipsGeo.scale(1.0, 1.0, 0.85);
     const hipsMesh = this.createPolyMesh(hipsGeo, 'shorts');
     hipsGroup.add(hipsMesh);
 
@@ -174,7 +179,7 @@ export class CharacterModel {
     hipsGroup.add(torsoGroup);
     this.joints.torso = torsoGroup;
 
-    // 복부/허리 (Waist - 슬림하면서 단단한 코어)
+    // 복부/허리 (Waist)
     const waistGeo = new THREE.CylinderGeometry(0.16, 0.13, 0.16, 8);
     const waistMesh = this.createPolyMesh(waistGeo, 'torso');
     waistMesh.position.set(0, 0.08, 0);
@@ -184,7 +189,7 @@ export class CharacterModel {
     const chestGeo = new THREE.CylinderGeometry(0.26, 0.16, 0.25, 8);
     const chestMesh = this.createPolyMesh(chestGeo, 'torso');
     chestMesh.position.set(0, 0.27, 0);
-    chestMesh.scale.set(1.22, 1, 0.90); // 어깨 쪽으로 웅장하게 벌어지는 역삼각 상체
+    chestMesh.scale.set(1.22, 1, 0.90);
     torsoGroup.add(chestMesh);
 
     // 3. 목 (Neck)
@@ -244,11 +249,11 @@ export class CharacterModel {
     this.skinMeshes.head.push(this.headMesh);
     this.skinMeshes.all.push(this.headMesh);
 
-    // 5. 넓은 남성형 어깨 및 상지 (Shoulder offset: ±0.32m로 넓혀 프로 축구선수 떡대 형성)
+    // 5. 어깨 및 상지 (어깨 오프셋: ±0.32m)
     this.setupArm(torsoGroup, 'left', -0.32);
     this.setupArm(torsoGroup, 'right', 0.32);
 
-    // 6. 좁아진 골반에 맞춘 남성형 하지 (고관절 간격: ±0.10m로 좁힘)
+    // 6. 골반 및 하지 (고관절 오프셋: ±0.10m)
     this.setupLeg(hipsGroup, 'left', -0.10);
     this.setupLeg(hipsGroup, 'right', 0.10);
   }
@@ -260,7 +265,7 @@ export class CharacterModel {
     const isLeft = side === 'left';
     const sign = isLeft ? -1 : 1;
 
-    // 떡 벌어진 어깨 관절 볼
+    // 어깨 관절 볼
     const shoulderBall = this.createJointBall(0.085, 'skin');
     shoulderBall.position.set(offsetX, 0.38, 0);
     parent.add(shoulderBall);
@@ -297,7 +302,7 @@ export class CharacterModel {
     wristBall.position.set(0, -0.26, 0);
     elbowGroup.add(wristBall);
 
-    // 손
+    // 손 (Hand)
     const handGroup = new THREE.Group();
     handGroup.position.set(0, -0.26, 0);
     elbowGroup.add(handGroup);
@@ -321,10 +326,9 @@ export class CharacterModel {
   }
 
   /**
-   * 탄탄한 남성 축구선수 다리 조립
+   * 다리 조립
    */
   setupLeg(parent, side, offsetX) {
-    // 고관절 볼
     const hipBall = this.createJointBall(0.085, 'shorts');
     hipBall.position.set(offsetX, -0.08, 0);
     parent.add(hipBall);
@@ -334,7 +338,7 @@ export class CharacterModel {
     parent.add(hipJoint);
     this.joints[`${side}Hip`] = hipJoint;
 
-    // 허벅지 (탄탄한 축구선수 대퇴사두근)
+    // 허벅지
     const thighGeo = new THREE.CylinderGeometry(0.10, 0.078, 0.40, 8);
     const thighMesh = this.createPolyMesh(thighGeo, 'skin');
     thighMesh.position.set(0, -0.20, 0);
@@ -472,14 +476,14 @@ export class CharacterModel {
   resetJoints() {
     Object.values(this.joints).forEach((joint) => {
       joint.rotation.set(0, 0, 0);
-      joint.position.y = joint.position.y;
     });
     this.group.position.set(0, 0, 0);
   }
 
   /**
-   * 챌린지 포즈 프리셋 적용
-   * @param {'DEFAULT'|'GEOJE_YAHO'|'CHOI_SAN_BAD'|'RONALDO_SIU'|'CUTE_HEART'} poseName
+   * 챌린지 및 바이럴 축구 세레모니 포즈 프리셋 적용
+   * - 몸통/머리/사지 간 기하학적 클리핑(파고듦/겹침)을 원천 차단하는 클리어런스(Clearance) 각도 설계
+   * @param {'DEFAULT'|'RONALDO_SIU'|'SON_CAMERA'|'GRIEZMANN_HOTLINE'|'BELLINGHAM_ARMS'|'GEOJE_YAHO'|'CHOI_SAN_BAD'|'CUTE_HEART'} poseName
    */
   applyPose(poseName) {
     this.currentPose = poseName;
@@ -488,56 +492,8 @@ export class CharacterModel {
     const j = this.joints;
 
     switch (poseName) {
-      case 'GEOJE_YAHO':
-        // [리센느 미나미 거제 야호 시그니처 챌린지]:
-        // 1. 오른손: 입가에 대어 "야호~" 외치는 한 손 확성기
-        // 2. 왼손: 전방으로 손목을 꺾어 내미는 시그니처 갸루피스 (Gyaru Peace)
-        // 3. 하체: 한쪽 다리(왼쪽 다리) 무릎을 번쩍 접어 뒤/옆으로 경쾌하게 들기 (외다리 밸런스)
-        // 4. 상체: 활기차게 살짝 비틀고 젖히며 신난 분위기 연출
-
-        // 상체 비틀기 & 신난 틸트
-        j.torso.rotation.set(-0.10, 0.15, -0.08);
-        j.neck.rotation.set(-0.05, -0.10, 0.10);
-        j.head.rotation.set(-0.10, -0.10, 0.18); // 갸루 특유의 갸우뚱 각도
-
-        // 우측 팔: 입가 한 손 확성기 ("야호~")
-        j.rightShoulder.rotation.set(-1.25, -0.35, -0.40);
-        j.rightElbow.rotation.set(-1.65, 0.20, 0.15);
-        j.rightHand.rotation.set(0.10, -0.30, 0);
-
-        // 좌측 팔: 전방을 향해 엣지있게 뻗은 갸루피스 (팔 앞으로 뻗고 손목 뒤집어 V자 각도)
-        j.leftShoulder.rotation.set(-1.05, 0.40, 0.35);
-        j.leftElbow.rotation.set(-0.35, 0.20, 0.85); // 팔꿈치 살짝 접어 앞으로 내밈
-        j.leftHand.rotation.set(0.60, 0.40, -1.20); // 갸루피스 손목 꺾기
-
-        // 지지하는 오른 다리: 탄탄하게 바닥 접지
-        j.rightHip.rotation.set(0.02, 0, 0.05);
-
-        // 번쩍 들어올린 왼 다리: 무릎을 90도 이상 뒤로 접어 발랄하게 치켜듦
-        j.leftHip.rotation.set(-0.35, 0.25, -0.45); // 고관절 외전 및 후방 굴곡
-        j.leftKnee.rotation.set(1.55, 0, -0.10);    // 무릎 90도 꺾기
-        j.leftFoot.rotation.set(-0.25, 0, 0);
-        break;
-
-      case 'CHOI_SAN_BAD':
-        // [최산 BAD]: 어깨 꺾기 + 날카로운 턱선
-        j.torso.rotation.set(0.05, 0.35, -0.18);
-        j.head.rotation.set(0.18, -0.55, 0.22);
-
-        j.leftShoulder.rotation.set(-0.30, 0.40, 1.25);
-        j.leftElbow.rotation.set(-1.60, 0.45, -0.20);
-
-        j.rightShoulder.rotation.set(0.40, -0.10, -0.25);
-        j.rightElbow.rotation.set(-0.25, 0, 0.15);
-
-        j.hips.rotation.z = 0.08;
-        j.leftHip.rotation.set(0.10, 0, -0.22);
-        j.leftKnee.rotation.set(0.18, 0, 0);
-        j.rightHip.rotation.set(-0.05, 0, 0.12);
-        break;
-
       case 'RONALDO_SIU':
-        // [호날두 시우]: 가슴 펴고 양팔 뒤로 뻗기
+        // [호날두 시우]: 가슴 펴고 양팔 뒤로 뻗기 (뒤쪽으로 뻗어 몸통 클리핑 0%)
         j.torso.rotation.set(0.15, 0, 0);
         j.head.rotation.set(-0.18, 0, 0);
 
@@ -552,24 +508,134 @@ export class CharacterModel {
         j.rightKnee.rotation.set(0.25, 0, 0);
         break;
 
+      case 'SON_CAMERA':
+        // [손흥민 시그니처 카메라 찰칵 세레모니]:
+        // 양손을 모아 사각 뷰파인더/카메라 프레임을 만들고 눈앞에 조준하는 대표적 시그니처
+        // 머리/가슴 앞쪽(Z축 바깥)으로 넉넉히 띄워 손과 머리의 겹침 원천 방지
+        j.torso.rotation.set(0.12, 0.08, 0);
+        j.head.rotation.set(-0.06, -0.08, 0.08); // 윙크하듯 카메라를 겨냥하는 틸트
+
+        // 양팔을 앞으로 모아 눈높이 전방 0.25m 지점에 카메라 사각 프레임 형성
+        j.leftShoulder.rotation.set(-1.18, 0.25, 0.65);
+        j.leftElbow.rotation.set(-1.65, 0.20, -0.35);
+        j.leftHand.rotation.set(0.25, 0.20, -0.80);
+
+        j.rightShoulder.rotation.set(-1.18, -0.25, -0.65);
+        j.rightElbow.rotation.set(-1.65, -0.20, 0.35);
+        j.rightHand.rotation.set(0.25, -0.20, 0.80);
+
+        // 하체: 살짝 짝다리 짚은 리드미컬한 필드 스탠스
+        j.leftHip.rotation.set(0.08, 0, -0.12);
+        j.rightHip.rotation.set(-0.05, 0, 0.18);
+        j.rightKnee.rotation.set(0.16, 0, 0);
+        break;
+
+      case 'GRIEZMANN_HOTLINE':
+        // [앙투안 그리즈만 전화기 댄스 (Hotline Bling)]:
+        // 양손을 전화기 모양(🤙)으로 뺨 양옆 공간(클리핑 없는 바깥쪽)에 들고 리듬 타는 큰 동작
+        j.torso.rotation.set(0.05, -0.15, 0.12); // 몸을 둠칫 옆으로 젖힘
+        j.head.rotation.set(0.05, 0.15, -0.15);  // 시선은 반대로 쿨하게
+
+        // 양손을 머리 측면 바깥쪽(X축 Clearance 넉넉히 확보)에 전화기 형태로 배치
+        j.leftShoulder.rotation.set(-1.10, 0.35, 0.95);
+        j.leftElbow.rotation.set(-1.85, 0.30, -0.25);
+        j.leftHand.rotation.set(0.20, 0.30, 0.15);
+
+        j.rightShoulder.rotation.set(-0.95, -0.25, -0.80);
+        j.rightElbow.rotation.set(-1.60, -0.25, 0.20);
+        j.rightHand.rotation.set(0.20, -0.30, -0.15);
+
+        // 하체: 댄스 스텝 (한쪽 무릎 들고 둠칫)
+        j.leftHip.rotation.set(-0.25, 0.15, -0.25);
+        j.leftKnee.rotation.set(0.55, 0, 0);
+        j.rightHip.rotation.set(0.12, 0, 0.08);
+        break;
+
+      case 'BELLINGHAM_ARMS':
+        // [주드 벨링엄 황제 양팔 벌리기 (Hey Jude)]:
+        // 관중석을 향해 가슴을 펴고 양팔을 양옆 대각선 위로 거대하게 뻗는 시그니처
+        j.torso.rotation.set(-0.16, 0, 0);
+        j.head.rotation.set(-0.20, 0, 0);
+
+        // 양팔을 양옆 바깥 대각선 위로 시원하게 펼침 (T/Y 형태)
+        j.leftShoulder.rotation.set(-0.15, 0, -1.35);
+        j.leftElbow.rotation.set(0, 0, 0);
+        j.rightShoulder.rotation.set(-0.15, 0, 1.35);
+        j.rightElbow.rotation.set(0, 0, 0);
+
+        // 하체: 당당한 와이드 스탠스
+        j.leftHip.rotation.set(0.08, 0, -0.22);
+        j.rightHip.rotation.set(0.08, 0, 0.22);
+        break;
+
+      case 'GEOJE_YAHO':
+        // [리센느 미나미 거제 야호]:
+        // 우측 손 확성기 + 좌측 손 갸루피스 + 좌측 외다리 킥
+        // 얼굴 앞쪽(Z축)으로 0.1m 이상 띄워 두상 파고듦 방지
+        j.torso.rotation.set(-0.10, 0.18, -0.08);
+        j.head.rotation.set(-0.08, -0.10, 0.18);
+
+        // 오른손: 입 앞쪽 10cm 여유를 두고 확성기 형태 배치 (두상 침범 차단)
+        j.rightShoulder.rotation.set(-1.18, -0.35, -0.32);
+        j.rightElbow.rotation.set(-1.48, 0.25, 0.15);
+        j.rightHand.rotation.set(0.10, -0.25, 0);
+
+        // 왼손: 전방으로 완만하게 뻗어 갸루피스
+        j.leftShoulder.rotation.set(-0.95, 0.40, 0.45);
+        j.leftElbow.rotation.set(-0.35, 0.20, 0.85);
+        j.leftHand.rotation.set(0.55, 0.35, -1.15);
+
+        // 하체: 오른발 지지, 왼발 무릎 90도 후방 굴곡 (대퇴부와 정강이 간격 유지)
+        j.rightHip.rotation.set(0.02, 0, 0.05);
+        j.leftHip.rotation.set(-0.30, 0.22, -0.40);
+        j.leftKnee.rotation.set(1.45, 0, -0.10);
+        break;
+
+      case 'CHOI_SAN_BAD':
+        // [에이티즈 최산 BAD 챌린지 시그니처 턱선 폼]:
+        // 1. 오른손: 턱선과 목 옆 라인을 쓸어올리며 턱을 받치는 매혹적인 손동작 (목 표면 밖으로 띄움)
+        // 2. 왼손: 가슴 앞쪽에 절도 있게 각을 잡고 얹은 팔
+        // 3. 고개: 날카로운 턱선을 과시하며 옆으로 치명적인 틸트
+        // 4. 골반: 삐딱하게 골반을 옆으로 밀어 섹시한 그루브 꺾기
+        j.torso.rotation.set(0.06, 0.28, -0.16);
+        j.head.rotation.set(0.16, -0.45, 0.26);
+
+        // 오른손: 턱선/목선 옆으로 다가가되 닿지 않는 클리어런스 확보
+        j.rightShoulder.rotation.set(-1.05, -0.30, -0.35);
+        j.rightElbow.rotation.set(-1.60, -0.20, 0.40);
+        j.rightHand.rotation.set(0.20, -0.40, 0.25);
+
+        // 왼손: 흉곽 앞쪽 8cm 간격을 두고 수평으로 접어 얹음
+        j.leftShoulder.rotation.set(-0.65, 0.25, 0.85);
+        j.leftElbow.rotation.set(-1.35, 0.35, -0.15);
+        j.leftHand.rotation.set(0.20, 0.20, 0);
+
+        // 하체: 골반 틸트 & 한쪽 다리 외전 (클리핑 0%)
+        j.hips.rotation.z = 0.09;
+        j.leftHip.rotation.set(0.08, 0, -0.20);
+        j.leftKnee.rotation.set(0.15, 0, 0);
+        j.rightHip.rotation.set(-0.04, 0, 0.12);
+        break;
+
       case 'CUTE_HEART':
-        // [축구장 볼하트]: 양손 뺨 옆 볼하트 포즈
+        // [축구장 볼하트]:
+        // 손이 볼/뺨 표면을 뚫지 않도록 뺨 바깥쪽(X축 ±0.28m, Z축 +0.18m)에 볼하트 생성
         j.torso.rotation.set(0.05, 0.05, 0.02);
         j.head.rotation.set(0.08, 0.05, 0.20);
 
-        j.leftShoulder.rotation.set(-1.20, 0.55, 0.85);
-        j.leftElbow.rotation.set(-1.95, 0.10, -0.25);
-        j.rightShoulder.rotation.set(-1.20, -0.55, -0.85);
-        j.rightElbow.rotation.set(-1.95, -0.10, 0.25);
+        j.leftShoulder.rotation.set(-1.12, 0.48, 0.82);
+        j.leftElbow.rotation.set(-1.75, 0.15, -0.20);
+        j.rightShoulder.rotation.set(-1.12, -0.48, -0.82);
+        j.rightElbow.rotation.set(-1.75, -0.15, 0.20);
 
-        j.leftHip.rotation.set(-0.10, 0.10, 0.12);
-        j.leftKnee.rotation.set(0.32, 0, 0);
+        j.leftHip.rotation.set(-0.08, 0.08, 0.10);
+        j.leftKnee.rotation.set(0.25, 0, 0);
         j.rightHip.rotation.set(0.05, 0, -0.05);
         break;
 
       case 'DEFAULT':
       default:
-        // 프로 남자 축구선수 기본 당당한 스탠스 (어깨너비 당당한 벌림)
+        // 프로 축구선수 기본 스탠스
         j.leftShoulder.rotation.set(0, 0, 0.12);
         j.rightShoulder.rotation.set(0, 0, -0.12);
         j.leftHip.rotation.set(0, 0, -0.06);

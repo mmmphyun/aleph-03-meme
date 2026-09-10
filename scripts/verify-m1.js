@@ -116,9 +116,17 @@ async function main() {
     console.log('  앱 상태:', JSON.stringify(appState, null, 2));
     if (!appState.ok) throw new Error('앱 초기화 실패: ' + appState.error);
 
-    // 4. 포즈 프리셋 4종 테스트 및 스크린샷
-    console.log('[4/7] 4대 챌린지 포즈 프리셋 순차 테스트...');
-    const poses = ['GEOJE_YAHO', 'CHOI_SAN_BAD', 'RONALDO_SIU', 'CUTE_HEART'];
+    // 4. 포즈 프리셋 전체 테스트 및 스크린샷
+    console.log('[4/7] 챌린지 및 바이럴 세레모니 포즈 프리셋 순차 테스트...');
+    const poses = [
+      'RONALDO_SIU',
+      'SON_CAMERA',
+      'BELLINGHAM_ARMS',
+      'GRIEZMANN_HOTLINE',
+      'GEOJE_YAHO',
+      'CHOI_SAN_BAD',
+      'CUTE_HEART'
+    ];
 
     for (const pose of poses) {
       const result = await evaluate(`(() => {
