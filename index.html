@@ -20,10 +20,10 @@
   <header class="app-header">
     <div class="brand">
       <span class="brand-title">⚽ 축구장 세레모니 제조기</span>
-      <span class="brand-badge">Milestone 1</span>
+      <span class="brand-badge">Milestone 2</span>
     </div>
     <div class="header-status">
-      Daisy Bell 로우폴리 캐릭터 &amp; 3D 축구장 스튜디오
+      사진 업로드 &amp; 타원형 얼굴 크롭 텍스처 합성 스튜디오
     </div>
   </header>
 
@@ -41,7 +41,92 @@
 
     <!-- 우측 컨트롤 사이드바 -->
     <aside class="control-panel" aria-label="스튜디오 컨트롤 패널">
-      <!-- 1. 포즈 프리셋 섹션 -->
+      <!-- 1. [T03-C03/C04/C05] 얼굴 사진 업로드 & 타원형 크롭 합성 섹션 (이미지 편집 도구) -->
+      <div class="panel-section" id="section-image-editor">
+        <div class="section-title">
+          <span>📷 얼굴 사진 합성 (이미지 편집)</span>
+          <span class="badge-status">M2</span>
+        </div>
+
+        <!-- 미지원 파일 형식 거부 에러 메시지 알림 박스 (T03-C09, C10) -->
+        <div id="face-error-alert" class="alert-box error" style="display: none;" role="alert"></div>
+
+        <!-- 현재 얼굴 미리보기 썸네일 & 업로드 버튼 -->
+        <div class="face-preview-row">
+          <div class="face-thumb-container">
+            <img id="current-face-thumb" src="assets/samples/sample_face_male.png" alt="현재 적용된 얼굴 텍스처">
+            <span class="thumb-label">현재 얼굴</span>
+          </div>
+          <div class="face-upload-actions">
+            <!-- 숨겨진 파일 인풋 (PNG, JPEG 전용) -->
+            <input
+              type="file"
+              id="face-file-input"
+              accept="image/png, image/jpeg"
+              style="display: none;"
+              aria-label="얼굴 사진 파일 업로드"
+            >
+            <button type="button" class="btn btn-primary" id="btn-trigger-upload">
+              <strong>📁 내 사진 업로드</strong>
+              <span class="btn-sub">PNG, JPG (5MB 이하)</span>
+            </button>
+            <button type="button" class="btn" id="btn-recrop-face">
+              <strong>✂️ 얼굴 다시 자르기</strong>
+              <span class="btn-sub">타원 가이드 재조정</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- 기본 테스트용 샘플 얼굴 2종 프리셋 (남/여) -->
+        <div class="sample-faces-group">
+          <div class="group-subtitle">⚡ 테스트용 샘플 얼굴 프리셋</div>
+          <div class="btn-grid">
+            <button type="button" class="btn btn-sample" id="btn-sample-male">
+              <strong>👦 남성 선수</strong>
+              <span class="btn-sub">승부사 눈빛</span>
+            </button>
+            <button type="button" class="btn btn-sample" id="btn-sample-female">
+              <strong>👧 여성 선수</strong>
+              <span class="btn-sub">헤어밴드 &amp; 포니테일</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- 2. [T03-C03] 문구 편집 도구 섹션 (첫 화면 선행 배치) -->
+      <div class="panel-section" id="section-text-editor">
+        <div class="section-title">
+          <span>💬 문구 편집 도구 (텍스트)</span>
+          <span class="badge-status">M3 준비</span>
+        </div>
+        <div class="text-editor-preview-hint">
+          <input
+            type="text"
+            id="text-caption-input"
+            class="text-input"
+            placeholder="세레모니 문구를 입력하세요"
+            value="오늘 밤 주인공은 나야 나!"
+            maxlength="60"
+            aria-label="세레모니 문구 입력"
+          >
+          <div class="slider-label-row" style="margin-top: 8px;">
+            <span>폰트 크기</span>
+            <span class="slider-value" id="text-size-val">36px</span>
+          </div>
+          <input
+            type="range"
+            id="text-size-slider"
+            class="range-input"
+            min="18"
+            max="64"
+            step="2"
+            value="36"
+            aria-label="폰트 크기 조절"
+          >
+        </div>
+      </div>
+
+      <!-- 3. 포즈 프리셋 섹션 -->
       <div class="panel-section">
         <div class="section-title">
           <span>🕺 챌린지 포즈 프리셋</span>
@@ -82,7 +167,7 @@
         </div>
       </div>
 
-      <!-- 2. 대두 슬라이더 섹션 -->
+      <!-- 4. 대두 슬라이더 섹션 -->
       <div class="panel-section">
         <div class="section-title">
           <span>👽 대두(Bobblehead) 모드</span>
@@ -107,7 +192,7 @@
         </div>
       </div>
 
-      <!-- 3. 콘셉트 스킨 섹션 -->
+      <!-- 5. 콘셉트 스킨 섹션 -->
       <div class="panel-section">
         <div class="section-title">
           <span>🎨 3대 콘셉트 스킨</span>
@@ -128,7 +213,7 @@
         </div>
       </div>
 
-      <!-- 4. 카메라 제어 섹션 -->
+      <!-- 6. 카메라 제어 섹션 -->
       <div class="panel-section">
         <div class="section-title">
           <span>🎥 3D 카메라 조작 &amp; 뷰 프리셋</span>
@@ -148,17 +233,61 @@
           </button>
         </div>
       </div>
-
-      <!-- 5. 향후 마일스톤 예고 정보 (T03-C03 구조적 선행 배치) -->
-      <div class="panel-section">
-        <div class="info-box">
-          <div class="info-box-title">💡 다음 마일스톤 안내</div>
-          <div>• <strong>M2:</strong> 사진 업로드 &amp; 타원형 얼굴 크롭 툴</div>
-          <div>• <strong>M3:</strong> 화면비(1:1, 4:5, 9:16) &amp; 2D 문구 합성 다운로드</div>
-        </div>
-      </div>
     </aside>
   </main>
+
+  <!-- 타원형 얼굴 크롭 모달 다이얼로그 -->
+  <div id="face-crop-modal" class="modal-backdrop" style="display: none;" role="dialog" aria-modal="true" aria-labelledby="crop-modal-title">
+    <div class="modal-window">
+      <!-- 모달 헤더 -->
+      <div class="modal-header">
+        <div class="modal-title-group">
+          <h2 id="crop-modal-title" class="modal-title">✂️ 타원형 얼굴 가이드 크롭</h2>
+          <span class="modal-subtitle">얼굴을 타원 가이드 안에 맞추면 3D 마네킹에 왜곡 없이 밀착됩니다</span>
+        </div>
+        <button type="button" class="btn-icon-close" id="btn-close-crop-modal" aria-label="닫기">&times;</button>
+      </div>
+
+      <!-- 모달 바디 (캔버스 뷰포트) -->
+      <div class="modal-body">
+        <div class="crop-viewport-wrap">
+          <canvas id="crop-canvas" width="400" height="400" aria-label="타원형 얼굴 크롭 캔버스"></canvas>
+          <div class="crop-hint-badge">
+            🖱️ 마우스 드래그: 위치 이동 | 휠 스크롤: 확대/축소
+          </div>
+        </div>
+
+        <!-- 줌 및 조작 컨트롤 바 -->
+        <div class="crop-controls-bar">
+          <div class="crop-zoom-wrap">
+            <span class="control-label">확대/축소</span>
+            <input
+              type="range"
+              id="crop-zoom-slider"
+              class="range-input"
+              min="0.5"
+              max="3.0"
+              step="0.05"
+              value="1.0"
+              aria-label="크롭 줌 슬라이더"
+            >
+            <span class="slider-value" id="crop-zoom-val">1.0x</span>
+          </div>
+          <button type="button" class="btn btn-sm" id="btn-reset-crop-view">
+            <span>🔄 위치 초기화</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- 모달 푸터 액션 버튼 -->
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" id="btn-cancel-crop">취소</button>
+        <button type="button" class="btn btn-primary btn-lg" id="btn-apply-crop">
+          <span>✨ 얼굴 적용 (3D 맵핑)</span>
+        </button>
+      </div>
+    </div>
+  </div>
 
   <!-- 메인 스크립트 실행 -->
   <script type="module" src="scripts/app.js"></script>
