@@ -20,10 +20,10 @@
   <header class="app-header">
     <div class="brand">
       <span class="brand-title">⚽ 축구장 세레모니 제조기</span>
-      <span class="brand-badge">Milestone 3</span>
+      <span class="brand-badge">Milestone 4</span>
     </div>
     <div class="header-status">
-      화면비(1:1, 4:5, 9:16) &amp; 2D 문구 &amp; 파일 일치 다운로드 스튜디오
+      화면비 · 2D 문구 · 템플릿 CRUD &amp; JSON 3단계 검증 스튜디오
     </div>
   </header>
 
@@ -64,7 +64,56 @@
 
     <!-- 우측 컨트롤 사이드바 -->
     <aside class="control-panel" aria-label="스튜디오 컨트롤 패널">
-      <!-- 0. [Milestone 3] 고해상도 PNG 다운로드 섹션 -->
+      <!-- 0. [Milestone 4] 템플릿 관리 (CRUD & JSON 3단계 검증) 섹션 (T03-C17~C24) -->
+      <div class="panel-section" id="section-template-manager">
+        <div class="section-title">
+          <span>📋 템플릿 관리 (CRUD)</span>
+          <span class="badge-status">M4</span>
+        </div>
+
+        <!-- 템플릿 알림 메시지 박스 (오류 / 성공 안내) -->
+        <div id="template-alert-box" class="alert-box" style="display: none;" role="alert"></div>
+
+        <!-- 템플릿 생성 / 수정 버튼 -->
+        <div class="template-action-toolbar">
+          <button type="button" class="btn btn-primary" id="btn-save-template">
+            <strong>➕ 템플릿 저장</strong>
+          </button>
+          <button type="button" class="btn" id="btn-update-template" title="현재 선택된 템플릿을 현재 편집 상태로 덮어씁니다">
+            <strong>💾 현재 템플릿 수정</strong>
+          </button>
+        </div>
+
+        <!-- JSON 가져오기 / 내보내기 버튼 그룹 (T03-C22~C24) -->
+        <div class="btn-grid" style="margin-top: 8px;">
+          <button type="button" class="btn btn-sm" id="btn-export-json">
+            <span>📤 JSON 내보내기</span>
+          </button>
+          <button type="button" class="btn btn-sm" id="btn-trigger-import-json">
+            <span>📥 JSON 가져오기</span>
+          </button>
+          <input
+            type="file"
+            id="json-file-input"
+            accept=".json,application/json"
+            style="display: none;"
+            aria-label="템플릿 JSON 파일 업로드"
+          >
+        </div>
+
+        <!-- 템플릿 목록 컨테이너 (T03-C17) -->
+        <div class="template-list-wrap" style="margin-top: 10px;">
+          <div class="template-list-header">
+            <span>저장된 템플릿 목록 (<span id="template-count">0</span>개)</span>
+            <span style="font-size: 0.72rem; color: var(--text-secondary);">새로고침(F5) 유지</span>
+          </div>
+          <div id="template-list" class="template-list" role="list">
+            <!-- 템플릿 카드 동적 렌더링 -->
+          </div>
+        </div>
+      </div>
+
+      <!-- 1. [Milestone 3] 고해상도 PNG 다운로드 섹션 -->
       <div class="panel-section" id="section-download">
         <div class="section-title">
           <span>📥 완성작 다운로드</span>

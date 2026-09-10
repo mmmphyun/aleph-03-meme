@@ -468,4 +468,46 @@ export class FaceCropper {
       this.modalEl.style.display = 'none';
     }
   }
+
+  /**
+   * DataURL로부터 얼굴 텍스처 복원 및 마네킹 적용
+   * @param {string} dataUrl
+   * @returns {Promise<THREE.CanvasTexture|null>}
+   */
+  applyFaceFromDataUrl(dataUrl) {
+    return new Promise((resolve) => {
+      if (!dataUrl) {
+        resolve(null);
+        return;
+      }
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.onload = () => {
+        this.currentImage = img;
+        this.currentImageSrc = dataUrl;
+        this.currentFaceDataUrl = dataUrl;
+        const texture = new THREE.CanvasTexture(img);
+        texture.needsUpdate = true;
+        this.currentTexture = texture;
+        if (this.currentFaceThumb) {
+          this.currentFaceThumb.src = dataUrl;
+        }
+        this.onFaceApplied(texture, dataUrl);
+        resolve(texture);
+      };
+      img.onerror = (err) => {
+        console.error('[FaceCropper] DataURL 로드 실패:', err);
+        resolve(null);
+      };
+      img.src = dataUrl;
+    });
+  }
+
+  /**
+   * 현재 적용된 얼굴 이미지의 DataURL 반환
+   * @returns {string|null}
+   */
+  getCurrentFaceDataUrl() {
+    return this.currentFaceDataUrl || null;
+  }
 }

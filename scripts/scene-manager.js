@@ -384,6 +384,40 @@ export class SceneManager {
   }
 
   /**
+   * 현재 3D 카메라 위치 및 시선 타깃 좌표 반환
+   * @returns {{position: {x: number, y: number, z: number}, target: {x: number, y: number, z: number}}}
+   */
+  getCameraState() {
+    return {
+      position: {
+        x: Number(this.camera.position.x.toFixed(4)),
+        y: Number(this.camera.position.y.toFixed(4)),
+        z: Number(this.camera.position.z.toFixed(4))
+      },
+      target: {
+        x: Number(this.controls.target.x.toFixed(4)),
+        y: Number(this.controls.target.y.toFixed(4)),
+        z: Number(this.controls.target.z.toFixed(4))
+      }
+    };
+  }
+
+  /**
+   * 3D 카메라 위치 및 시선 타깃 복원
+   * @param {{position?: {x: number, y: number, z: number}, target?: {x: number, y: number, z: number}}} state
+   */
+  setCameraState(state) {
+    if (!state || !this.camera || !this.controls) return;
+    if (state.position) {
+      this.camera.position.set(state.position.x, state.position.y, state.position.z);
+    }
+    if (state.target) {
+      this.controls.target.set(state.target.x, state.target.y, state.target.z);
+    }
+    this.controls.update();
+  }
+
+  /**
    * 렌더 루프 프레임 업데이트
    */
   animate() {

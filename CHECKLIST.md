@@ -118,21 +118,22 @@ c:\work\aleph-03-meme\CHECKLIST.md의 [Milestone 3] 체크리스트를 순차적
 사용자 템플릿을 생성/조회/수정/삭제하고 새로고침 후에도 유지하며, JSON 가져오기 3단계 유효성 검사를 구축한다.
 
 ### 체크리스트
-- [ ] 템플릿 데이터 모델 정의 (`id`, `title`, `ratio`, `pose`, `headScale`, `cameraPosition`, `cameraTarget`, `text`, `fontSize`, `fontColor`, `textY`, `faceImageDataUrl`, `updatedAt`)
-- [ ] 템플릿 모듈 구현 (`scripts/template-store.js`):
+- [x] 템플릿 데이터 모델 정의 (`id`, `title`, `ratio`, `pose`, `skin`, `headScale`, `cameraPosition`, `cameraTarget`, `text`, `fontSize`, `fontColor`, `textY`, `faceImageDataUrl`, `updatedAt`)
+- [x] 템플릿 모듈 구현 (`scripts/template-store.js`):
   - `createTemplate()`: 고유 ID 발급 및 3개 이상 생성 지원 (T03-C17)
   - `loadTemplate(id)`: 템플릿 선택 시 3D 씬과 문구 편집기 상태 복원 (T03-C18)
   - `updateTemplate(id)`: 현재 편집 상태로 템플릿 갱신 (T03-C19)
   - `deleteTemplate(id)`: 템플릿 삭제 (T03-C20)
   - `localStorage` 연동 및 새로고침(F5) 후 데이터 영속화 확인 (T03-C21)
-- [ ] JSON 내보내기/가져오기 모듈 구현 (`scripts/json-validator.js`):
+- [x] JSON 내보내기/가져오기 모듈 구현 (`scripts/json-validator.js`):
   - 현재 템플릿 데이터를 `.json` 파일로 내보내기
   - 정상 JSON 가져오기 시 템플릿 복원 (T03-C22)
   - 문법 손상 JSON 가져오기 시 거부 안내 및 기존 템플릿 보존 (T03-C23)
   - 필수 필드 누락 JSON 가져오기 시 거부 안내 및 기존 템플릿 보존 (T03-C24)
+- [x] 마일스톤 4 템플릿 CRUD & JSON 3단계 검증 스크린샷 10종 생성 완료 (`docs/verification-m4/`)
 
 ### 완료 조건 (Definition of Done)
-* 템플릿을 3개 이상 추가/수정/삭제 후 F5를 눌러도 상태가 유지되며, 깨진 JSON이나 필수값이 빠진 JSON을 넣었을 때 에러 안내와 함께 기존 템플릿 목록이 훼손되지 않음.
+* 템플릿을 3개 이상 추가/수정/삭제 후 F5를 눌러도 상태가 유지되며, 깨진 JSON이나 필수값이 빠진 JSON을 넣었을 때 에러 안내와 함께 기존 템플릿 목록이 훼손되지 않음 (검증 완료).
 
 ### 세션 4 시작 프롬프트
 ```text
