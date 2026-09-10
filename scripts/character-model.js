@@ -1,10 +1,11 @@
 /**
  * @file character-model.js
- * @description Daisy Bell 스타일의 6~8각 로우폴리곤 마네킹 캐릭터 모델
- * - 관절 계층 구조 (Rigging)
+ * @description 볼 조인트 기반 스타일라이즈드 로우폴리 마네킹 캐릭터 모델
+ * - 두상 표면 입체 굴곡에 정사영(Planar Projection)으로 완전 밀착 래핑되는 얼굴 텍스처
+ * - 관절 결손 없는 볼 조인트(Ball-joint) 인체 연결
+ * - 엄지 및 손가락 분할 손(Hand) 메쉬 구조
  * - 3대 콘셉트 스킨 스왑 (CLASSIC_DAISY, RETRO_JERSEY, GOLDEN_TROPHY)
- * - 챌린지 포즈 프리셋 4종 (GEOJE_YAHO, CHOI_SAN_BAD, RONALDO_SIU, CUTE_HEART)
- * - 대두(Bobblehead) 실시간 스케일 제어
+ * - 4대 챌린지 포즈 및 대두 슬라이더 지원
  */
 import * as THREE from 'three';
 
@@ -18,25 +19,25 @@ export class CharacterModel {
 
     // 관절 노드 레퍼런스
     this.joints = {};
-    // 스킨 파트별 메쉬 레퍼런스 (머티리얼 교체용)
+    // 스킨 파트별 메쉬 레퍼런스
     this.skinMeshes = {
-      skin: [],    // 피부 파트 (팔, 다리 등)
-      torso: [],   // 몸통 (유니폼/상의)
-      shorts: [],  // 반바지/골반
+      skin: [],    // 피부/사지
+      torso: [],   // 가슴/복부
+      shorts: [],  // 골반/반바지
+      joints: [],  // 관절 구체
       socks: [],   // 양말
       shoes: [],   // 신발
       head: [],    // 두상
-      all: []      // 전체 일괄 적용용
+      all: []
     };
 
-    // 현재 상태
     this.currentSkin = 'CLASSIC_DAISY';
     this.currentPose = 'DEFAULT';
-    this.headScale = 1.4; // 기본 대두미 1.4배
+    this.headScale = 1.4;
 
-    // 얼굴 텍스처 평면 메쉬
-    this.facePlane = null;
-    this.defaultFaceTexture = null;
+    this.headMesh = null;
+    this.faceCanvas = null;
+    this.faceTexture = null;
 
     this.initModel();
     this.applySkin(this.currentSkin);
@@ -47,67 +48,79 @@ export class CharacterModel {
   }
 
   /**
-   * Daisy Bell 감성의 기본 기괴·코믹 얼굴 텍스처 생성 (Canvas 2D 절차적 생성)
-   * @returns {THREE.CanvasTexture}
+   * 두상 표면에 직접 매핑될 기본 얼굴 텍스처 (1024x1024)
    */
   createDefaultFaceTexture() {
-    const canvas = document.createElement('canvas');
-    canvas.width = 512;
-    canvas.height = 512;
-    const ctx = canvas.getContext('2d');
+    this.faceCanvas = document.createElement('canvas');
+    this.faceCanvas.width = 1024;
+    this.faceCanvas.height = 1024;
+    const ctx = this.faceCanvas.getContext('2d');
 
-    // 투명 배경
-    ctx.clearRect(0, 0, 512, 512);
-
-    // 연한 피부톤 원형 마스크 베이스
+    // 베이스 배경
     ctx.fillStyle = '#e6dfd5';
+    ctx.fillRect(0, 0, 1024, 1024);
+
+    const cx = 512;
+    const cy = 512;
+
+    // 은은한 안면부 그라데이션
+    const grad = ctx.createRadialGradient(cx, cy, 80, cx, cy, 380);
+    grad.addColorStop(0, '#f5efe8');
+    grad.addColorStop(0.7, '#e4dcd2');
+    grad.addColorStop(1, '#cbbfb0');
+    ctx.fillStyle = grad;
     ctx.beginPath();
-    ctx.ellipse(256, 256, 190, 230, 0, 0, Math.PI * 2);
+    ctx.arc(cx, cy, 380, 0, Math.PI * 2);
     ctx.fill();
 
-    // Daisy Bell 특유의 묘한 무표정 눈 (검은 타원)
-    ctx.fillStyle = '#222222';
-    // 좌안
+    // Daisy Bell 특유의 기묘하고 또렷한 눈 (정면 중앙)
+    const eyeY = 460;
+    const eyeDist = 110;
+
+    // 좌안 / 우안 베이스
+    ctx.fillStyle = '#1c1c1c';
     ctx.beginPath();
-    ctx.ellipse(190, 220, 26, 20, 0, 0, Math.PI * 2);
+    ctx.ellipse(cx - eyeDist, eyeY, 34, 28, 0, 0, Math.PI * 2);
     ctx.fill();
-    // 우안
     ctx.beginPath();
-    ctx.ellipse(322, 220, 26, 20, 0, 0, Math.PI * 2);
+    ctx.ellipse(cx + eyeDist, eyeY, 34, 28, 0, 0, Math.PI * 2);
     ctx.fill();
 
-    // 눈 하이라이트 작은 백색 점
+    // 눈동자 하이라이트
     ctx.fillStyle = '#ffffff';
     ctx.beginPath();
-    ctx.arc(184, 214, 7, 0, Math.PI * 2);
-    ctx.arc(316, 214, 7, 0, Math.PI * 2);
+    ctx.arc(cx - eyeDist - 10, eyeY - 8, 10, 0, Math.PI * 2);
+    ctx.arc(cx + eyeDist - 10, eyeY - 8, 10, 0, Math.PI * 2);
     ctx.fill();
-
-    // 앙증맞은 볼터치 (연분홍)
-    ctx.fillStyle = 'rgba(255, 120, 140, 0.4)';
     ctx.beginPath();
-    ctx.ellipse(160, 270, 35, 20, 0, 0, Math.PI * 2);
-    ctx.ellipse(352, 270, 35, 20, 0, 0, Math.PI * 2);
+    ctx.arc(cx - eyeDist + 12, eyeY + 6, 5, 0, Math.PI * 2);
+    ctx.arc(cx + eyeDist + 12, eyeY + 6, 5, 0, Math.PI * 2);
     ctx.fill();
 
-    // 묘한 미소/일자 입 (Uncanny Lip)
-    ctx.strokeStyle = '#333333';
-    ctx.lineWidth = 6;
+    // 볼터치 (연분홍 홍조)
+    ctx.fillStyle = 'rgba(255, 115, 130, 0.4)';
+    ctx.beginPath();
+    ctx.ellipse(cx - 150, 535, 45, 25, 0, 0, Math.PI * 2);
+    ctx.ellipse(cx + 150, 535, 45, 25, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // 살짝 미소 짓는 입술선
+    ctx.strokeStyle = '#382a24';
+    ctx.lineWidth = 8;
     ctx.lineCap = 'round';
     ctx.beginPath();
-    ctx.arc(256, 310, 45, 0.15 * Math.PI, 0.85 * Math.PI, false);
+    ctx.arc(cx, 585, 60, 0.18 * Math.PI, 0.82 * Math.PI, false);
     ctx.stroke();
 
-    const texture = new THREE.CanvasTexture(canvas);
-    texture.needsUpdate = true;
-    return texture;
+    this.faceTexture = new THREE.CanvasTexture(this.faceCanvas);
+    return this.faceTexture;
   }
 
   /**
-   * 로우폴리 메쉬 생성 헬퍼 (Flat Shading 적용된 각진 지오메트리)
+   * 로우폴리곤 메쉬 생성 헬퍼
    */
-  createPolyMesh(geo, category = 'skin') {
-    const mat = new THREE.MeshStandardMaterial({
+  createPolyMesh(geo, category = 'skin', customMat = null) {
+    const mat = customMat || new THREE.MeshStandardMaterial({
       color: 0xe6dfd5,
       roughness: 0.5,
       metalness: 0.05,
@@ -125,73 +138,117 @@ export class CharacterModel {
   }
 
   /**
-   * 로우폴리곤 마네킹 인체 계층 구조(Hierarchical Rig) 조립
+   * 관절 볼(Joint Sphere) 메쉬 생성
+   */
+  createJointBall(radius, category = 'joints') {
+    const geo = new THREE.SphereGeometry(radius, 8, 6);
+    return this.createPolyMesh(geo, category);
+  }
+
+  /**
+   * 인체 모델링 조립
    */
   initModel() {
-    // 0. 최하위 베이스 높이 (캐릭터 발이 잔디 Y=0에 정확히 접지되도록 조절)
     this.group.position.set(0, 0, 0);
 
-    // 1. 골반 (Hips) - 전체 상체/하체 분기점 (y: 0.95m)
+    // 1. 골반 (Hips)
     const hipsGroup = new THREE.Group();
-    hipsGroup.position.set(0, 0.96, 0);
+    hipsGroup.position.set(0, 0.94, 0);
     this.group.add(hipsGroup);
     this.joints.hips = hipsGroup;
 
-    // 골반 메쉬 (6각 기둥)
-    const hipsGeo = new THREE.CylinderGeometry(0.20, 0.16, 0.22, 6);
+    // 골반 본체
+    const hipsGeo = new THREE.CylinderGeometry(0.18, 0.14, 0.20, 8);
     const hipsMesh = this.createPolyMesh(hipsGeo, 'shorts');
     hipsGroup.add(hipsMesh);
 
-    // 2. 몸통/흉부 (Torso/Spine)
+    // 2. 척추 및 허리/가슴 (Spine & Torso)
+    const spineJoint = this.createJointBall(0.12, 'torso');
+    spineJoint.position.set(0, 0.10, 0);
+    hipsGroup.add(spineJoint);
+
     const torsoGroup = new THREE.Group();
-    torsoGroup.position.set(0, 0.11, 0); // 골반 상단에 연결
+    torsoGroup.position.set(0, 0.10, 0);
     hipsGroup.add(torsoGroup);
     this.joints.torso = torsoGroup;
 
-    // 복부-가슴 역삼각 각진 메쉬 (상단 폭 0.26, 하단 폭 0.18, 높이 0.44, 7각형)
-    const torsoGeo = new THREE.CylinderGeometry(0.26, 0.18, 0.44, 7);
-    const torsoMesh = this.createPolyMesh(torsoGeo, 'torso');
-    torsoMesh.position.set(0, 0.22, 0);
-    torsoGroup.add(torsoMesh);
+    // 복부 (Waist)
+    const waistGeo = new THREE.CylinderGeometry(0.17, 0.14, 0.16, 8);
+    const waistMesh = this.createPolyMesh(waistGeo, 'torso');
+    waistMesh.position.set(0, 0.08, 0);
+    torsoGroup.add(waistMesh);
+
+    // 가슴/흉곽 (Chest)
+    const chestGeo = new THREE.CylinderGeometry(0.23, 0.17, 0.24, 8);
+    const chestMesh = this.createPolyMesh(chestGeo, 'torso');
+    chestMesh.position.set(0, 0.26, 0);
+    chestMesh.scale.set(1.15, 1, 0.85);
+    torsoGroup.add(chestMesh);
 
     // 3. 목 (Neck)
+    const neckJoint = this.createJointBall(0.08, 'skin');
+    neckJoint.position.set(0, 0.38, 0);
+    torsoGroup.add(neckJoint);
+
     const neckGroup = new THREE.Group();
-    neckGroup.position.set(0, 0.44, 0);
+    neckGroup.position.set(0, 0.38, 0);
     torsoGroup.add(neckGroup);
     this.joints.neck = neckGroup;
 
-    const neckGeo = new THREE.CylinderGeometry(0.08, 0.09, 0.12, 6);
+    const neckGeo = new THREE.CylinderGeometry(0.075, 0.085, 0.12, 8);
     const neckMesh = this.createPolyMesh(neckGeo, 'skin');
     neckMesh.position.set(0, 0.06, 0);
     neckGroup.add(neckMesh);
 
-    // 4. 머리 그룹 (Head Group - 대두 슬라이더 제어 대상)
+    // 4. 머리 그룹 (Head Group - 전면 정사영 UV 매핑)
     const headGroup = new THREE.Group();
     headGroup.position.set(0, 0.12, 0);
     neckGroup.add(headGroup);
     this.joints.head = headGroup;
 
-    // Daisy Bell 스타일의 각진 다면체 두상 (IcosahedronGeometry detail=0)
-    const headGeo = new THREE.IcosahedronGeometry(0.25, 0);
-    const headMesh = this.createPolyMesh(headGeo, 'head');
-    headMesh.position.set(0, 0.16, 0);
-    headGroup.add(headMesh);
+    // 두상 지오메트리 (계란형 입체 구체)
+    const headGeo = new THREE.SphereGeometry(0.25, 16, 12);
+    headGeo.scale(0.92, 1.15, 0.98);
 
-    // 얼굴 정면 텍스처 평면 메쉬 (정면 z=0.22에 배치)
-    this.defaultFaceTexture = this.createDefaultFaceTexture();
-    const faceMat = new THREE.MeshBasicMaterial({
-      map: this.defaultFaceTexture,
-      transparent: true,
-      depthWrite: false
+    // [핵심] 전면 정사영(Frontal Planar Projection) UV 재계산:
+    // 2D 평면 종이 가면을 없애고 두상의 3D 굴곡을 그대로 타면서 왜곡 없이 밀착 래핑
+    const pos = headGeo.attributes.position;
+    const uvs = headGeo.attributes.uv;
+    for (let i = 0; i < pos.count; i++) {
+      const x = pos.getX(i);
+      const y = pos.getY(i);
+      const z = pos.getZ(i);
+
+      if (z >= -0.05) {
+        // 전면: [-0.23, 0.23] 폭과 [-0.28, 0.28] 높이를 UV [0.1, 0.9]에 대응
+        const u = 0.5 + (x / 0.50);
+        const v = 0.5 + (y / 0.58);
+        uvs.setXY(i, Math.max(0.05, Math.min(0.95, u)), Math.max(0.05, Math.min(0.95, v)));
+      } else {
+        // 후면: 피부 단색 영역(좌측 상단 여백)으로 압축 매핑
+        uvs.setXY(i, 0.05, 0.05);
+      }
+    }
+    uvs.needsUpdate = true;
+
+    this.createDefaultFaceTexture();
+    const headMat = new THREE.MeshStandardMaterial({
+      map: this.faceTexture,
+      roughness: 0.5,
+      metalness: 0.05,
+      flatShading: true
     });
-    const faceGeo = new THREE.PlaneGeometry(0.38, 0.42);
-    this.facePlane = new THREE.Mesh(faceGeo, faceMat);
-    this.facePlane.position.set(0, 0.16, 0.235);
-    headGroup.add(this.facePlane);
+    this.headMesh = new THREE.Mesh(headGeo, headMat);
+    this.headMesh.position.set(0, 0.20, 0);
+    this.headMesh.castShadow = true;
+    this.headMesh.receiveShadow = true;
+    headGroup.add(this.headMesh);
+    this.skinMeshes.head.push(this.headMesh);
+    this.skinMeshes.all.push(this.headMesh);
 
     // 5. 어깨 및 상지 (Shoulder, Arm, Forearm, Hand)
-    this.setupArm(torsoGroup, 'left', -0.30);
-    this.setupArm(torsoGroup, 'right', 0.30);
+    this.setupArm(torsoGroup, 'left', -0.28);
+    this.setupArm(torsoGroup, 'right', 0.28);
 
     // 6. 골반 및 하지 (Thigh, Knee, Shin, Foot)
     this.setupLeg(hipsGroup, 'left', -0.13);
@@ -199,91 +256,139 @@ export class CharacterModel {
   }
 
   /**
-   * 팔 (어깨 관절 -> 상완 -> 팔꿈치 -> 전완 -> 손) 조립
+   * 볼 조인트 팔 및 엄지/손가락 분할 손 조립
    */
   setupArm(parent, side, offsetX) {
     const isLeft = side === 'left';
     const sign = isLeft ? -1 : 1;
 
-    // 어깨 관절 피벗
+    // 어깨 관절 볼
+    const shoulderBall = this.createJointBall(0.08, 'skin');
+    shoulderBall.position.set(offsetX, 0.36, 0);
+    parent.add(shoulderBall);
+
+    // 어깨 회전 피벗
     const shoulderGroup = new THREE.Group();
     shoulderGroup.position.set(offsetX, 0.36, 0);
     parent.add(shoulderGroup);
     this.joints[`${side}Shoulder`] = shoulderGroup;
 
-    // 상완 (Upper Arm)
-    const upperArmGeo = new THREE.CylinderGeometry(0.065, 0.055, 0.28, 6);
+    // 상완 (테이퍼드)
+    const upperArmGeo = new THREE.CylinderGeometry(0.065, 0.052, 0.28, 8);
     const upperArmMesh = this.createPolyMesh(upperArmGeo, 'skin');
     upperArmMesh.position.set(0, -0.14, 0);
     shoulderGroup.add(upperArmMesh);
 
-    // 팔꿈치 관절 피벗
+    // 팔꿈치 관절 볼
+    const elbowBall = this.createJointBall(0.06, 'skin');
+    elbowBall.position.set(0, -0.28, 0);
+    shoulderGroup.add(elbowBall);
+
+    // 팔꿈치 회전 피벗
     const elbowGroup = new THREE.Group();
     elbowGroup.position.set(0, -0.28, 0);
     shoulderGroup.add(elbowGroup);
     this.joints[`${side}Elbow`] = elbowGroup;
 
-    // 전완 (Forearm)
-    const forearmGeo = new THREE.CylinderGeometry(0.055, 0.05, 0.26, 6);
+    // 전완 (테이퍼드)
+    const forearmGeo = new THREE.CylinderGeometry(0.052, 0.045, 0.26, 8);
     const forearmMesh = this.createPolyMesh(forearmGeo, 'skin');
     forearmMesh.position.set(0, -0.13, 0);
     elbowGroup.add(forearmMesh);
 
-    // 손 (Hand - 각진 주먹 형태)
+    // 손목 관절 볼
+    const wristBall = this.createJointBall(0.045, 'skin');
+    wristBall.position.set(0, -0.26, 0);
+    elbowGroup.add(wristBall);
+
+    // 손 (Hand) - 손바닥 + 독립 엄지손가락 + 4손가락 블록
     const handGroup = new THREE.Group();
     handGroup.position.set(0, -0.26, 0);
     elbowGroup.add(handGroup);
     this.joints[`${side}Hand`] = handGroup;
 
-    const handGeo = new THREE.BoxGeometry(0.08, 0.10, 0.08);
-    const handMesh = this.createPolyMesh(handGeo, 'skin');
-    handMesh.position.set(0, -0.05, 0);
-    handGroup.add(handMesh);
+    // 손바닥
+    const palmGeo = new THREE.BoxGeometry(0.07, 0.08, 0.04);
+    const palmMesh = this.createPolyMesh(palmGeo, 'skin');
+    palmMesh.position.set(0, -0.04, 0);
+    handGroup.add(palmMesh);
+
+    // 4손가락 블록
+    const fingersGeo = new THREE.BoxGeometry(0.066, 0.06, 0.035);
+    const fingersMesh = this.createPolyMesh(fingersGeo, 'skin');
+    fingersMesh.position.set(0, -0.10, 0.002);
+    handGroup.add(fingersMesh);
+
+    // 엄지손가락
+    const thumbGeo = new THREE.BoxGeometry(0.026, 0.05, 0.028);
+    const thumbMesh = this.createPolyMesh(thumbGeo, 'skin');
+    thumbMesh.position.set(sign * 0.045, -0.04, 0.015);
+    thumbMesh.rotation.z = -sign * 0.45;
+    handGroup.add(thumbMesh);
   }
 
   /**
-   * 다리 (고관절 -> 대퇴부/허벅지 -> 무릎 -> 하퇴/정강이 -> 발) 조립
+   * 볼 조인트 다리 및 발 조립
    */
   setupLeg(parent, side, offsetX) {
+    // 고관절 볼
+    const hipBall = this.createJointBall(0.09, 'shorts');
+    hipBall.position.set(offsetX, -0.08, 0);
+    parent.add(hipBall);
+
     // 고관절 피벗
     const hipJoint = new THREE.Group();
-    hipJoint.position.set(offsetX, -0.10, 0);
+    hipJoint.position.set(offsetX, -0.08, 0);
     parent.add(hipJoint);
     this.joints[`${side}Hip`] = hipJoint;
 
-    // 대퇴부 허벅지 (Thigh)
-    const thighGeo = new THREE.CylinderGeometry(0.09, 0.075, 0.40, 6);
+    // 허벅지 (테이퍼드)
+    const thighGeo = new THREE.CylinderGeometry(0.095, 0.075, 0.40, 8);
     const thighMesh = this.createPolyMesh(thighGeo, 'skin');
     thighMesh.position.set(0, -0.20, 0);
     hipJoint.add(thighMesh);
 
-    // 무릎 관절 피벗
+    // 무릎 관절 볼
+    const kneeBall = this.createJointBall(0.075, 'skin');
+    kneeBall.position.set(0, -0.40, 0);
+    hipJoint.add(kneeBall);
+
+    // 무릎 피벗
     const kneeGroup = new THREE.Group();
     kneeGroup.position.set(0, -0.40, 0);
     hipJoint.add(kneeGroup);
     this.joints[`${side}Knee`] = kneeGroup;
 
-    // 정강이/하퇴 (Shin - 양말 파트)
-    const shinGeo = new THREE.CylinderGeometry(0.075, 0.065, 0.38, 6);
+    // 정강이/양말 (테이퍼드)
+    const shinGeo = new THREE.CylinderGeometry(0.075, 0.060, 0.38, 8);
     const shinMesh = this.createPolyMesh(shinGeo, 'socks');
     shinMesh.position.set(0, -0.19, 0);
     kneeGroup.add(shinMesh);
 
-    // 발 (Foot - 신발 파트)
+    // 발목 관절 볼
+    const ankleBall = this.createJointBall(0.055, 'shoes');
+    ankleBall.position.set(0, -0.38, 0);
+    kneeGroup.add(ankleBall);
+
+    // 발 (축구화)
     const footGroup = new THREE.Group();
     footGroup.position.set(0, -0.38, 0);
     kneeGroup.add(footGroup);
     this.joints[`${side}Foot`] = footGroup;
 
-    const footGeo = new THREE.BoxGeometry(0.11, 0.08, 0.22);
+    const footGeo = new THREE.BoxGeometry(0.10, 0.07, 0.22);
     const footMesh = this.createPolyMesh(footGeo, 'shoes');
-    footMesh.position.set(0, -0.04, 0.05); // 발 앞쪽으로 살짝 돌출
+    footMesh.position.set(0, -0.035, 0.05);
     footGroup.add(footMesh);
+
+    const toeGeo = new THREE.BoxGeometry(0.09, 0.05, 0.08);
+    const toeMesh = this.createPolyMesh(toeGeo, 'shoes');
+    toeMesh.position.set(0, -0.045, 0.16);
+    footGroup.add(toeMesh);
   }
 
   /**
    * 대두(Bobblehead) 슬라이더 실시간 크기 조절
-   * @param {number} scale - 머리 크기 배율 (0.8 ~ 2.5)
    */
   setHeadScale(scale) {
     this.headScale = Math.max(0.8, Math.min(2.5, scale));
@@ -293,110 +398,94 @@ export class CharacterModel {
   }
 
   /**
-   * 3대 콘셉트 스킨 스왑 적용
-   * @param {'CLASSIC_DAISY'|'RETRO_JERSEY'|'GOLDEN_TROPHY'} skinName
+   * 3대 콘셉트 스킨 스왑
    */
   applySkin(skinName) {
     this.currentSkin = skinName;
 
-    // 1. CLASSIC_DAISY: 창백한 회백색 무광 플라스틱 (Daisy Bell 원조 감성)
+    // 1. CLASSIC_DAISY
     if (skinName === 'CLASSIC_DAISY') {
       const daisyColor = 0xe6dfd5;
       this.skinMeshes.all.forEach((mesh) => {
-        mesh.material.color.setHex(daisyColor);
-        mesh.material.roughness = 0.5;
-        mesh.material.metalness = 0.05;
-        mesh.material.flatShading = true;
-        mesh.material.map = null;
-        mesh.material.needsUpdate = true;
+        if (mesh !== this.headMesh) {
+          mesh.material.color.setHex(daisyColor);
+          mesh.material.roughness = 0.5;
+          mesh.material.metalness = 0.05;
+          mesh.material.emissive.setHex(0x000000);
+          mesh.material.needsUpdate = true;
+        }
       });
       return;
     }
 
-    // 2. RETRO_JERSEY: 축구 유니폼 투톤 (상체 빨강+파랑 세로 줄무늬, 하체 백색 반바지, 양말, 축구화)
+    // 2. RETRO_JERSEY
     if (skinName === 'RETRO_JERSEY') {
-      // 상체 유니폼 (강렬한 레트로 레드/블루)
       const jerseyColor = 0xcc2222;
       const shortsColor = 0xf0f0f0;
-      const skinTone = 0xf7d3ba;
+      const skinTone = 0xf5d0b5;
       const socksColor = 0x1565c0;
       const shoesColor = 0x212121;
 
-      this.skinMeshes.torso.forEach((mesh) => {
-        mesh.material.color.setHex(jerseyColor);
-        mesh.material.roughness = 0.7;
-        mesh.material.metalness = 0.1;
-        mesh.material.needsUpdate = true;
+      this.skinMeshes.torso.forEach((m) => {
+        m.material.color.setHex(jerseyColor);
+        m.material.emissive.setHex(0x000000);
+        m.material.needsUpdate = true;
       });
-
-      this.skinMeshes.shorts.forEach((mesh) => {
-        mesh.material.color.setHex(shortsColor);
-        mesh.material.roughness = 0.7;
-        mesh.material.metalness = 0.05;
-        mesh.material.needsUpdate = true;
+      this.skinMeshes.shorts.forEach((m) => {
+        m.material.color.setHex(shortsColor);
+        m.material.emissive.setHex(0x000000);
+        m.material.needsUpdate = true;
       });
-
-      this.skinMeshes.skin.forEach((mesh) => {
-        mesh.material.color.setHex(skinTone);
-        mesh.material.roughness = 0.5;
-        mesh.material.metalness = 0.05;
-        mesh.material.needsUpdate = true;
+      this.skinMeshes.skin.forEach((m) => {
+        m.material.color.setHex(skinTone);
+        m.material.emissive.setHex(0x000000);
+        m.material.needsUpdate = true;
       });
-
-      this.skinMeshes.socks.forEach((mesh) => {
-        mesh.material.color.setHex(socksColor);
-        mesh.material.roughness = 0.7;
-        mesh.material.metalness = 0.05;
-        mesh.material.needsUpdate = true;
+      this.skinMeshes.joints.forEach((m) => {
+        m.material.color.setHex(skinTone);
+        m.material.emissive.setHex(0x000000);
+        m.material.needsUpdate = true;
       });
-
-      this.skinMeshes.shoes.forEach((mesh) => {
-        mesh.material.color.setHex(shoesColor);
-        mesh.material.roughness = 0.4;
-        mesh.material.metalness = 0.2;
-        mesh.material.needsUpdate = true;
+      this.skinMeshes.socks.forEach((m) => {
+        m.material.color.setHex(socksColor);
+        m.material.emissive.setHex(0x000000);
+        m.material.needsUpdate = true;
       });
-
-      this.skinMeshes.head.forEach((mesh) => {
-        mesh.material.color.setHex(skinTone);
-        mesh.material.roughness = 0.5;
-        mesh.material.metalness = 0.05;
-        mesh.material.needsUpdate = true;
+      this.skinMeshes.shoes.forEach((m) => {
+        m.material.color.setHex(shoesColor);
+        m.material.emissive.setHex(0x000000);
+        m.material.needsUpdate = true;
       });
       return;
     }
 
-    // 3. GOLDEN_TROPHY: 전신 고광택 메탈릭 골드 (발롱도르 세레모니 트로피)
+    // 3. GOLDEN_TROPHY
     if (skinName === 'GOLDEN_TROPHY') {
       const goldColor = 0xffc800;
       this.skinMeshes.all.forEach((mesh) => {
-        mesh.material.color.setHex(goldColor);
-        mesh.material.roughness = 0.3;
-        mesh.material.metalness = 0.7;
-        mesh.material.emissive = new THREE.Color(0x3a2e05);
-        mesh.material.needsUpdate = true;
+        if (mesh !== this.headMesh) {
+          mesh.material.color.setHex(goldColor);
+          mesh.material.roughness = 0.3;
+          mesh.material.metalness = 0.7;
+          mesh.material.emissive.setHex(0x3a2e05);
+          mesh.material.needsUpdate = true;
+        }
       });
       return;
     }
-    // 다른 스킨으로 변경될 때 emissive 리셋
-    this.skinMeshes.all.forEach((mesh) => {
-      mesh.material.emissive = new THREE.Color(0x000000);
-    });
   }
 
   /**
-   * 모든 관절 회전값을 0으로 리셋 (차렷/기본 스탠딩)
+   * 모든 관절 회전값 초기화
    */
   resetJoints() {
     Object.values(this.joints).forEach((joint) => {
       joint.rotation.set(0, 0, 0);
-      joint.position.x = joint.position.x; // 초기 위치 유지
     });
   }
 
   /**
    * 챌린지 포즈 프리셋 적용
-   * @param {'DEFAULT'|'GEOJE_YAHO'|'CHOI_SAN_BAD'|'RONALDO_SIU'|'CUTE_HEART'} poseName
    */
   applyPose(poseName) {
     this.currentPose = poseName;
@@ -406,36 +495,31 @@ export class CharacterModel {
 
     switch (poseName) {
       case 'GEOJE_YAHO':
-        // [리센느 거제 야호]: 젖힌 상체 + 양손 입가 확성기 모양 + 포효
-        j.torso.rotation.x = -0.28; // 상체를 뒤로 과감히 젖힘
+        // [리센느 거제 야호]: 젖힌 상체 + 양손 입가 확성기
+        j.torso.rotation.x = -0.28;
         j.neck.rotation.x = -0.15;
-        j.head.rotation.x = -0.20; // 턱을 치켜들고 하늘을 봄
+        j.head.rotation.x = -0.20;
 
-        // 양팔 들어올려 양손을 입 바로 앞으로 모음 (확성기 손동작)
         j.leftShoulder.rotation.set(-1.15, 0.45, 0.60);
         j.leftElbow.rotation.set(-1.45, 0, -0.30);
         j.rightShoulder.rotation.set(-1.15, -0.45, -0.60);
         j.rightElbow.rotation.set(-1.45, 0, 0.30);
 
-        // 하체: 살짝 어깨너비로 벌리고 선 자세
         j.leftHip.rotation.set(0.05, 0, -0.15);
         j.rightHip.rotation.set(0.05, 0, 0.15);
         break;
 
       case 'CHOI_SAN_BAD':
-        // [최산 BAD]: 치명적 어깨 꺾기 + 턱선 각도 + 삐딱한 엣지
-        j.torso.rotation.set(0.05, 0.35, -0.18); // 몸통을 삐딱하게 비틀고 기울임
-        j.head.rotation.set(0.18, -0.55, 0.22); // 날카로운 턱선을 살려 반대편으로 고개 돌림
+        // [최산 BAD]: 어깨 꺾기 + 날카로운 턱선
+        j.torso.rotation.set(0.05, 0.35, -0.18);
+        j.head.rotation.set(0.18, -0.55, 0.22);
 
-        // 좌측 어깨를 과감하게 치켜올리고 꺾음
         j.leftShoulder.rotation.set(-0.30, 0.40, 1.25);
         j.leftElbow.rotation.set(-1.60, 0.45, -0.20);
 
-        // 우측 팔은 쿨하게 뒤쪽 하단으로 흘려내림
         j.rightShoulder.rotation.set(0.40, -0.10, -0.25);
         j.rightElbow.rotation.set(-0.25, 0, 0.15);
 
-        // 골반과 다리: 짝다리 짚은 폼
         j.hips.rotation.z = 0.08;
         j.leftHip.rotation.set(0.10, 0, -0.22);
         j.leftKnee.rotation.set(0.18, 0, 0);
@@ -443,17 +527,15 @@ export class CharacterModel {
         break;
 
       case 'RONALDO_SIU':
-        // [호날두 시우]: 공중 착지 직후 양팔 뒤로 뻗고 가슴 펴며 'SIUUU'
-        j.torso.rotation.set(0.15, 0, 0); // 가슴 활짝 전방 돌출
-        j.head.rotation.set(-0.18, 0, 0); // 정면 살짝 위를 당당히 응시
+        // [호날두 시우]: 가슴 펴고 양팔 뒤로 뻗기
+        j.torso.rotation.set(0.15, 0, 0);
+        j.head.rotation.set(-0.18, 0, 0);
 
-        // 양팔을 뒤쪽 아래로 강렬하게 뻗어 날개처럼 펼침
         j.leftShoulder.rotation.set(0.85, -0.25, 0.55);
         j.leftElbow.rotation.set(-0.20, 0, -0.10);
         j.rightShoulder.rotation.set(0.85, 0.25, -0.55);
         j.rightElbow.rotation.set(-0.20, 0, 0.10);
 
-        // 하체: 다리를 넓게 벌려 무게중심을 낮춘 착지 자세
         j.leftHip.rotation.set(-0.15, 0, -0.32);
         j.leftKnee.rotation.set(0.25, 0, 0);
         j.rightHip.rotation.set(-0.15, 0, 0.32);
@@ -461,17 +543,15 @@ export class CharacterModel {
         break;
 
       case 'CUTE_HEART':
-        // [축구장 볼하트]: 양손을 얼굴/볼 양옆에 앙증맞게 대는 애교 세레모니
+        // [축구장 볼하트]: 양손 뺨 옆 볼하트 포즈
         j.torso.rotation.set(0.05, 0.05, 0.02);
-        j.head.rotation.set(0.08, 0.05, 0.20); // 갸우뚱 큐트 틸트
+        j.head.rotation.set(0.08, 0.05, 0.20);
 
-        // 양팔을 접어 양손을 뺨 옆에 하트 모양으로 가져감
         j.leftShoulder.rotation.set(-1.20, 0.55, 0.85);
         j.leftElbow.rotation.set(-1.95, 0.10, -0.25);
         j.rightShoulder.rotation.set(-1.20, -0.55, -0.85);
         j.rightElbow.rotation.set(-1.95, -0.10, 0.25);
 
-        // 하체: 살짝 꼬은 귀여운 다리 각도
         j.leftHip.rotation.set(-0.10, 0.10, 0.12);
         j.leftKnee.rotation.set(0.32, 0, 0);
         j.rightHip.rotation.set(0.05, 0, -0.05);
@@ -479,7 +559,6 @@ export class CharacterModel {
 
       case 'DEFAULT':
       default:
-        // 기본 자연스러운 대기 자세
         j.leftShoulder.rotation.set(0, 0, 0.15);
         j.rightShoulder.rotation.set(0, 0, -0.15);
         j.leftHip.rotation.set(0, 0, -0.08);
@@ -489,13 +568,12 @@ export class CharacterModel {
   }
 
   /**
-   * 얼굴 텍스처 교체 (Milestone 2 연동 대비)
-   * @param {THREE.Texture} texture
+   * 얼굴 텍스처 교체
    */
   setFaceTexture(texture) {
-    if (this.facePlane && texture) {
-      this.facePlane.material.map = texture;
-      this.facePlane.material.needsUpdate = true;
+    if (this.headMesh && texture) {
+      this.headMesh.material.map = texture;
+      this.headMesh.material.needsUpdate = true;
     }
   }
 }
