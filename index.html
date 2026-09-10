@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>축구장 세레모니 제조기 (Ceremony Maker)</title>
+  <link rel="stylesheet" href="styles/main.css">
+  <!-- Three.js 및 Addons Import Map 설정 -->
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+      }
+    }
+  </script>
+</head>
+<body>
+  <!-- 상단 네비게이션 헤더 -->
+  <header class="app-header">
+    <div class="brand">
+      <span class="brand-title">⚽ 축구장 세레모니 제조기</span>
+      <span class="brand-badge">Milestone 1</span>
+    </div>
+    <div class="header-status">
+      Daisy Bell 로우폴리 캐릭터 &amp; 3D 축구장 스튜디오
+    </div>
+  </header>
+
+  <!-- 메인 작업 영역 -->
+  <main class="app-main">
+    <!-- 3D 뷰포트 영역 -->
+    <section class="viewport-container" aria-label="3D 축구장 뷰포트">
+      <div class="viewport-canvas-wrapper">
+        <canvas id="three-canvas"></canvas>
+      </div>
+      <div class="viewport-hint">
+        🖱️ 좌클릭 드래그: 360° 카메라 회전 | 휠: 줌 인/아웃 | 우클릭: 시점 이동
+      </div>
+    </section>
+
+    <!-- 우측 컨트롤 사이드바 -->
+    <aside class="control-panel" aria-label="스튜디오 컨트롤 패널">
+      <!-- 1. 포즈 프리셋 섹션 -->
+      <div class="panel-section">
+        <div class="section-title">
+          <span>🕺 챌린지 포즈 프리셋</span>
+        </div>
+        <div class="btn-grid">
+          <button type="button" class="btn" data-pose="GEOJE_YAHO">
+            <strong>거제 야호</strong>
+            <span class="btn-sub">리센느 양손 확성기</span>
+          </button>
+          <button type="button" class="btn" data-pose="CHOI_SAN_BAD">
+            <strong>최산 BAD</strong>
+            <span class="btn-sub">치명적 어깨 꺾기</span>
+          </button>
+          <button type="button" class="btn" data-pose="RONALDO_SIU">
+            <strong>호날두 시우</strong>
+            <span class="btn-sub">양팔 뒤로 포효</span>
+          </button>
+          <button type="button" class="btn" data-pose="CUTE_HEART">
+            <strong>축구장 볼하트</strong>
+            <span class="btn-sub">앙증맞은 양손 볼하트</span>
+          </button>
+        </div>
+        <div style="margin-top: 8px;">
+          <button type="button" class="btn active" data-pose="DEFAULT" style="width: 100%;">
+            <strong>기본 자세 (차렷)</strong>
+          </button>
+        </div>
+      </div>
+
+      <!-- 2. 대두 슬라이더 섹션 -->
+      <div class="panel-section">
+        <div class="section-title">
+          <span>👽 대두(Bobblehead) 모드</span>
+          <span class="slider-value" id="head-scale-val">1.4x</span>
+        </div>
+        <div class="slider-group">
+          <input
+            type="range"
+            id="head-scale-slider"
+            class="range-input"
+            min="0.8"
+            max="2.5"
+            step="0.1"
+            value="1.4"
+            aria-label="머리 크기 배율 조절"
+          >
+          <div class="slider-label-row" style="margin-top: 6px; font-size: 0.75rem; color: var(--text-secondary);">
+            <span>소두 (0.8x)</span>
+            <span>표준 (1.0x)</span>
+            <span>극대두 (2.5x)</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- 3. 콘셉트 스킨 섹션 -->
+      <div class="panel-section">
+        <div class="section-title">
+          <span>🎨 3대 콘셉트 스킨</span>
+        </div>
+        <div class="btn-grid-3">
+          <button type="button" class="btn active" data-skin="CLASSIC_DAISY">
+            <strong>데이지 벨</strong>
+            <span class="btn-sub">회백색 안드로이드</span>
+          </button>
+          <button type="button" class="btn" data-skin="RETRO_JERSEY">
+            <strong>레트로 유니폼</strong>
+            <span class="btn-sub">조기축구회 투톤</span>
+          </button>
+          <button type="button" class="btn" data-skin="GOLDEN_TROPHY">
+            <strong>골든 트로피</strong>
+            <span class="btn-sub">발롱도르 메탈</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- 4. 카메라 제어 섹션 -->
+      <div class="panel-section">
+        <div class="section-title">
+          <span>🎥 카메라 뷰</span>
+        </div>
+        <button type="button" class="btn" id="btn-reset-camera" style="width: 100%;">
+          <strong>정면 시점 리셋</strong>
+          <span class="btn-sub">초기 위치(0, 1.6, 4.2)로 정렬</span>
+        </button>
+      </div>
+
+      <!-- 5. 향후 마일스톤 예고 정보 (T03-C03 구조적 선행 배치) -->
+      <div class="panel-section">
+        <div class="info-box">
+          <div class="info-box-title">💡 다음 마일스톤 안내</div>
+          <div>• <strong>M2:</strong> 사진 업로드 &amp; 타원형 얼굴 크롭 툴</div>
+          <div>• <strong>M3:</strong> 화면비(1:1, 4:5, 9:16) &amp; 2D 문구 합성 다운로드</div>
+        </div>
+      </div>
+    </aside>
+  </main>
+
+  <!-- 메인 스크립트 실행 -->
+  <script type="module" src="scripts/app.js"></script>
+</body>
+</html>
