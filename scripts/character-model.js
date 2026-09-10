@@ -302,27 +302,49 @@ export class CharacterModel {
     wristBall.position.set(0, -0.26, 0);
     elbowGroup.add(wristBall);
 
-    // 손 (Hand)
+    // 손 (Hand) - 손바닥 + 5개 개별 독립 손가락 (엄지, 검지, 중지, 약지, 새끼)
     const handGroup = new THREE.Group();
     handGroup.position.set(0, -0.26, 0);
     elbowGroup.add(handGroup);
     this.joints[`${side}Hand`] = handGroup;
 
-    const palmGeo = new THREE.BoxGeometry(0.07, 0.08, 0.04);
+    // 1. 손바닥 (Palm)
+    const palmGeo = new THREE.BoxGeometry(0.068, 0.075, 0.035);
     const palmMesh = this.createPolyMesh(palmGeo, 'skin');
-    palmMesh.position.set(0, -0.04, 0);
+    palmMesh.position.set(0, -0.038, 0);
     handGroup.add(palmMesh);
 
-    const fingersGeo = new THREE.BoxGeometry(0.066, 0.06, 0.035);
-    const fingersMesh = this.createPolyMesh(fingersGeo, 'skin');
-    fingersMesh.position.set(0, -0.10, 0.002);
-    handGroup.add(fingersMesh);
+    // 2. 엄지손가락 (Thumb) - 독립 관절 피벗
+    const thumbJoint = new THREE.Group();
+    thumbJoint.position.set(sign * 0.038, -0.025, 0.012);
+    thumbJoint.rotation.z = -sign * 0.45;
+    handGroup.add(thumbJoint);
+    this.joints[`${side}Thumb`] = thumbJoint;
 
-    const thumbGeo = new THREE.BoxGeometry(0.026, 0.05, 0.028);
+    const thumbGeo = new THREE.BoxGeometry(0.018, 0.045, 0.020);
     const thumbMesh = this.createPolyMesh(thumbGeo, 'skin');
-    thumbMesh.position.set(sign * 0.045, -0.04, 0.015);
-    thumbMesh.rotation.z = -sign * 0.45;
-    handGroup.add(thumbMesh);
+    thumbMesh.position.set(0, -0.022, 0);
+    thumbJoint.add(thumbMesh);
+
+    // 3. 4개 개별 손가락 (검지, 중지, 약지, 새끼)
+    const fingerDefs = [
+      { name: 'Index',  x: sign * 0.024, len: 0.050, thick: 0.015 },
+      { name: 'Middle', x: sign * 0.008, len: 0.055, thick: 0.015 },
+      { name: 'Ring',   x: -sign * 0.008, len: 0.048, thick: 0.014 },
+      { name: 'Pinky',  x: -sign * 0.024, len: 0.040, thick: 0.013 }
+    ];
+
+    fingerDefs.forEach((f) => {
+      const fingerJoint = new THREE.Group();
+      fingerJoint.position.set(f.x, -0.075, 0);
+      handGroup.add(fingerJoint);
+      this.joints[`${side}${f.name}`] = fingerJoint;
+
+      const fGeo = new THREE.BoxGeometry(f.thick, f.len, 0.020);
+      const fMesh = this.createPolyMesh(fGeo, 'skin');
+      fMesh.position.set(0, -f.len / 2, 0);
+      fingerJoint.add(fMesh);
+    });
   }
 
   /**
@@ -477,6 +499,9 @@ export class CharacterModel {
     Object.values(this.joints).forEach((joint) => {
       joint.rotation.set(0, 0, 0);
     });
+    // 엄지손가락 인체 해부학적 기본 외전 각도 보존
+    if (this.joints.leftThumb) this.joints.leftThumb.rotation.z = 0.45;
+    if (this.joints.rightThumb) this.joints.rightThumb.rotation.z = -0.45;
     this.group.position.set(0, 0, 0);
   }
 
