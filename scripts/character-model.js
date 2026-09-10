@@ -1,11 +1,12 @@
 /**
  * @file character-model.js
- * @description 볼 조인트 기반 스타일라이즈드 로우폴리 마네킹 캐릭터 모델
+ * @description 볼 조인트 기반 프로 축구선수 체형 로우폴리 마네킹 캐릭터 모델
+ * - 프로 남자 축구선수 역삼각형 체형 (넓은 어깨 + 슬림하고 단단한 골반 + 탄탄한 허벅지)
  * - 두상 표면 입체 굴곡에 정사영(Planar Projection)으로 완전 밀착 래핑되는 얼굴 텍스처
  * - 관절 결손 없는 볼 조인트(Ball-joint) 인체 연결
  * - 엄지 및 손가락 분할 손(Hand) 메쉬 구조
  * - 3대 콘셉트 스킨 스왑 (CLASSIC_DAISY, RETRO_JERSEY, GOLDEN_TROPHY)
- * - 4대 챌린지 포즈 및 대두 슬라이더 지원
+ * - 4대 챌린지 포즈 (거제 야호: 한 손 확성기 + 한 손 갸루피스 + 한쪽 다리 들기)
  */
 import * as THREE from 'three';
 
@@ -21,13 +22,13 @@ export class CharacterModel {
     this.joints = {};
     // 스킨 파트별 메쉬 레퍼런스
     this.skinMeshes = {
-      skin: [],    // 피부/사지
-      torso: [],   // 가슴/복부
-      shorts: [],  // 골반/반바지
-      joints: [],  // 관절 구체
-      socks: [],   // 양말
-      shoes: [],   // 신발
-      head: [],    // 두상
+      skin: [],
+      torso: [],
+      shorts: [],
+      joints: [],
+      socks: [],
+      shoes: [],
+      head: [],
       all: []
     };
 
@@ -56,14 +57,12 @@ export class CharacterModel {
     this.faceCanvas.height = 1024;
     const ctx = this.faceCanvas.getContext('2d');
 
-    // 베이스 배경
     ctx.fillStyle = '#e6dfd5';
     ctx.fillRect(0, 0, 1024, 1024);
 
     const cx = 512;
     const cy = 512;
 
-    // 은은한 안면부 그라데이션
     const grad = ctx.createRadialGradient(cx, cy, 80, cx, cy, 380);
     grad.addColorStop(0, '#f5efe8');
     grad.addColorStop(0.7, '#e4dcd2');
@@ -73,11 +72,10 @@ export class CharacterModel {
     ctx.arc(cx, cy, 380, 0, Math.PI * 2);
     ctx.fill();
 
-    // Daisy Bell 특유의 기묘하고 또렷한 눈 (정면 중앙)
     const eyeY = 460;
     const eyeDist = 110;
 
-    // 좌안 / 우안 베이스
+    // 눈
     ctx.fillStyle = '#1c1c1c';
     ctx.beginPath();
     ctx.ellipse(cx - eyeDist, eyeY, 34, 28, 0, 0, Math.PI * 2);
@@ -86,7 +84,7 @@ export class CharacterModel {
     ctx.ellipse(cx + eyeDist, eyeY, 34, 28, 0, 0, Math.PI * 2);
     ctx.fill();
 
-    // 눈동자 하이라이트
+    // 눈 하이라이트
     ctx.fillStyle = '#ffffff';
     ctx.beginPath();
     ctx.arc(cx - eyeDist - 10, eyeY - 8, 10, 0, Math.PI * 2);
@@ -97,14 +95,14 @@ export class CharacterModel {
     ctx.arc(cx + eyeDist + 12, eyeY + 6, 5, 0, Math.PI * 2);
     ctx.fill();
 
-    // 볼터치 (연분홍 홍조)
+    // 홍조
     ctx.fillStyle = 'rgba(255, 115, 130, 0.4)';
     ctx.beginPath();
     ctx.ellipse(cx - 150, 535, 45, 25, 0, 0, Math.PI * 2);
     ctx.ellipse(cx + 150, 535, 45, 25, 0, 0, Math.PI * 2);
     ctx.fill();
 
-    // 살짝 미소 짓는 입술선
+    // 입
     ctx.strokeStyle = '#382a24';
     ctx.lineWidth = 8;
     ctx.lineCap = 'round';
@@ -146,72 +144,74 @@ export class CharacterModel {
   }
 
   /**
-   * 인체 모델링 조립
+   * 프로 남자 축구선수 체형 인체 모델링 조립
+   * - 넓은 흉곽과 어깨 프레임 (역삼각형 상체)
+   * - 좁고 단단한 남자 골반 (여성형 모래시계 골반 탈피)
+   * - 탄탄한 대퇴부와 종아리
    */
   initModel() {
     this.group.position.set(0, 0, 0);
 
-    // 1. 골반 (Hips)
+    // 1. 골반 (Hips - 남성 축구선수용 슬림 & 단단한 골반)
     const hipsGroup = new THREE.Group();
     hipsGroup.position.set(0, 0.94, 0);
     this.group.add(hipsGroup);
     this.joints.hips = hipsGroup;
 
-    // 골반 본체
-    const hipsGeo = new THREE.CylinderGeometry(0.18, 0.14, 0.20, 8);
+    // 골반 너비를 0.18 -> 0.135로 대폭 축소하여 남성 골반 비율 형성
+    const hipsGeo = new THREE.CylinderGeometry(0.14, 0.12, 0.19, 8);
+    hipsGeo.scale(1.0, 1.0, 0.85); // 앞뒤 납작하고 단단한 축구선수 힙
     const hipsMesh = this.createPolyMesh(hipsGeo, 'shorts');
     hipsGroup.add(hipsMesh);
 
     // 2. 척추 및 허리/가슴 (Spine & Torso)
-    const spineJoint = this.createJointBall(0.12, 'torso');
-    spineJoint.position.set(0, 0.10, 0);
+    const spineJoint = this.createJointBall(0.10, 'torso');
+    spineJoint.position.set(0, 0.09, 0);
     hipsGroup.add(spineJoint);
 
     const torsoGroup = new THREE.Group();
-    torsoGroup.position.set(0, 0.10, 0);
+    torsoGroup.position.set(0, 0.09, 0);
     hipsGroup.add(torsoGroup);
     this.joints.torso = torsoGroup;
 
-    // 복부 (Waist)
-    const waistGeo = new THREE.CylinderGeometry(0.17, 0.14, 0.16, 8);
+    // 복부/허리 (Waist - 슬림하면서 단단한 코어)
+    const waistGeo = new THREE.CylinderGeometry(0.16, 0.13, 0.16, 8);
     const waistMesh = this.createPolyMesh(waistGeo, 'torso');
     waistMesh.position.set(0, 0.08, 0);
     torsoGroup.add(waistMesh);
 
-    // 가슴/흉곽 (Chest)
-    const chestGeo = new THREE.CylinderGeometry(0.23, 0.17, 0.24, 8);
+    // 가슴/흉곽 (Chest - 넓고 두터운 역삼각형 상체 프레임)
+    const chestGeo = new THREE.CylinderGeometry(0.26, 0.16, 0.25, 8);
     const chestMesh = this.createPolyMesh(chestGeo, 'torso');
-    chestMesh.position.set(0, 0.26, 0);
-    chestMesh.scale.set(1.15, 1, 0.85);
+    chestMesh.position.set(0, 0.27, 0);
+    chestMesh.scale.set(1.22, 1, 0.90); // 어깨 쪽으로 웅장하게 벌어지는 역삼각 상체
     torsoGroup.add(chestMesh);
 
     // 3. 목 (Neck)
     const neckJoint = this.createJointBall(0.08, 'skin');
-    neckJoint.position.set(0, 0.38, 0);
+    neckJoint.position.set(0, 0.40, 0);
     torsoGroup.add(neckJoint);
 
     const neckGroup = new THREE.Group();
-    neckGroup.position.set(0, 0.38, 0);
+    neckGroup.position.set(0, 0.40, 0);
     torsoGroup.add(neckGroup);
     this.joints.neck = neckGroup;
 
-    const neckGeo = new THREE.CylinderGeometry(0.075, 0.085, 0.12, 8);
+    const neckGeo = new THREE.CylinderGeometry(0.08, 0.09, 0.11, 8);
     const neckMesh = this.createPolyMesh(neckGeo, 'skin');
-    neckMesh.position.set(0, 0.06, 0);
+    neckMesh.position.set(0, 0.055, 0);
     neckGroup.add(neckMesh);
 
-    // 4. 머리 그룹 (Head Group - 전면 정사영 UV 매핑)
+    // 4. 머리 그룹 (Head Group)
     const headGroup = new THREE.Group();
-    headGroup.position.set(0, 0.12, 0);
+    headGroup.position.set(0, 0.11, 0);
     neckGroup.add(headGroup);
     this.joints.head = headGroup;
 
-    // 두상 지오메트리 (계란형 입체 구체)
     const headGeo = new THREE.SphereGeometry(0.25, 16, 12);
     headGeo.scale(0.92, 1.15, 0.98);
 
-    // [핵심] 전면 정사영(Frontal Planar Projection) UV 재계산:
-    // 2D 평면 종이 가면을 없애고 두상의 3D 굴곡을 그대로 타면서 왜곡 없이 밀착 래핑
+    // 전면 정사영 UV 매핑 (얼굴 텍스처 곡면 밀착)
     const pos = headGeo.attributes.position;
     const uvs = headGeo.attributes.uv;
     for (let i = 0; i < pos.count; i++) {
@@ -220,12 +220,10 @@ export class CharacterModel {
       const z = pos.getZ(i);
 
       if (z >= -0.05) {
-        // 전면: [-0.23, 0.23] 폭과 [-0.28, 0.28] 높이를 UV [0.1, 0.9]에 대응
         const u = 0.5 + (x / 0.50);
         const v = 0.5 + (y / 0.58);
         uvs.setXY(i, Math.max(0.05, Math.min(0.95, u)), Math.max(0.05, Math.min(0.95, v)));
       } else {
-        // 후면: 피부 단색 영역(좌측 상단 여백)으로 압축 매핑
         uvs.setXY(i, 0.05, 0.05);
       }
     }
@@ -246,80 +244,75 @@ export class CharacterModel {
     this.skinMeshes.head.push(this.headMesh);
     this.skinMeshes.all.push(this.headMesh);
 
-    // 5. 어깨 및 상지 (Shoulder, Arm, Forearm, Hand)
-    this.setupArm(torsoGroup, 'left', -0.28);
-    this.setupArm(torsoGroup, 'right', 0.28);
+    // 5. 넓은 남성형 어깨 및 상지 (Shoulder offset: ±0.32m로 넓혀 프로 축구선수 떡대 형성)
+    this.setupArm(torsoGroup, 'left', -0.32);
+    this.setupArm(torsoGroup, 'right', 0.32);
 
-    // 6. 골반 및 하지 (Thigh, Knee, Shin, Foot)
-    this.setupLeg(hipsGroup, 'left', -0.13);
-    this.setupLeg(hipsGroup, 'right', 0.13);
+    // 6. 좁아진 골반에 맞춘 남성형 하지 (고관절 간격: ±0.10m로 좁힘)
+    this.setupLeg(hipsGroup, 'left', -0.10);
+    this.setupLeg(hipsGroup, 'right', 0.10);
   }
 
   /**
-   * 볼 조인트 팔 및 엄지/손가락 분할 손 조립
+   * 상완 및 전완, 분할 손 구조
    */
   setupArm(parent, side, offsetX) {
     const isLeft = side === 'left';
     const sign = isLeft ? -1 : 1;
 
-    // 어깨 관절 볼
-    const shoulderBall = this.createJointBall(0.08, 'skin');
-    shoulderBall.position.set(offsetX, 0.36, 0);
+    // 떡 벌어진 어깨 관절 볼
+    const shoulderBall = this.createJointBall(0.085, 'skin');
+    shoulderBall.position.set(offsetX, 0.38, 0);
     parent.add(shoulderBall);
 
-    // 어깨 회전 피벗
     const shoulderGroup = new THREE.Group();
-    shoulderGroup.position.set(offsetX, 0.36, 0);
+    shoulderGroup.position.set(offsetX, 0.38, 0);
     parent.add(shoulderGroup);
     this.joints[`${side}Shoulder`] = shoulderGroup;
 
-    // 상완 (테이퍼드)
-    const upperArmGeo = new THREE.CylinderGeometry(0.065, 0.052, 0.28, 8);
+    // 상완
+    const upperArmGeo = new THREE.CylinderGeometry(0.068, 0.055, 0.28, 8);
     const upperArmMesh = this.createPolyMesh(upperArmGeo, 'skin');
     upperArmMesh.position.set(0, -0.14, 0);
     shoulderGroup.add(upperArmMesh);
 
-    // 팔꿈치 관절 볼
+    // 팔꿈치
     const elbowBall = this.createJointBall(0.06, 'skin');
     elbowBall.position.set(0, -0.28, 0);
     shoulderGroup.add(elbowBall);
 
-    // 팔꿈치 회전 피벗
     const elbowGroup = new THREE.Group();
     elbowGroup.position.set(0, -0.28, 0);
     shoulderGroup.add(elbowGroup);
     this.joints[`${side}Elbow`] = elbowGroup;
 
-    // 전완 (테이퍼드)
-    const forearmGeo = new THREE.CylinderGeometry(0.052, 0.045, 0.26, 8);
+    // 전완
+    const forearmGeo = new THREE.CylinderGeometry(0.055, 0.048, 0.26, 8);
     const forearmMesh = this.createPolyMesh(forearmGeo, 'skin');
     forearmMesh.position.set(0, -0.13, 0);
     elbowGroup.add(forearmMesh);
 
-    // 손목 관절 볼
+    // 손목
     const wristBall = this.createJointBall(0.045, 'skin');
     wristBall.position.set(0, -0.26, 0);
     elbowGroup.add(wristBall);
 
-    // 손 (Hand) - 손바닥 + 독립 엄지손가락 + 4손가락 블록
+    // 손
     const handGroup = new THREE.Group();
     handGroup.position.set(0, -0.26, 0);
     elbowGroup.add(handGroup);
     this.joints[`${side}Hand`] = handGroup;
 
-    // 손바닥
     const palmGeo = new THREE.BoxGeometry(0.07, 0.08, 0.04);
     const palmMesh = this.createPolyMesh(palmGeo, 'skin');
     palmMesh.position.set(0, -0.04, 0);
     handGroup.add(palmMesh);
 
-    // 4손가락 블록
     const fingersGeo = new THREE.BoxGeometry(0.066, 0.06, 0.035);
     const fingersMesh = this.createPolyMesh(fingersGeo, 'skin');
     fingersMesh.position.set(0, -0.10, 0.002);
     handGroup.add(fingersMesh);
 
-    // 엄지손가락
     const thumbGeo = new THREE.BoxGeometry(0.026, 0.05, 0.028);
     const thumbMesh = this.createPolyMesh(thumbGeo, 'skin');
     thumbMesh.position.set(sign * 0.045, -0.04, 0.015);
@@ -328,49 +321,47 @@ export class CharacterModel {
   }
 
   /**
-   * 볼 조인트 다리 및 발 조립
+   * 탄탄한 남성 축구선수 다리 조립
    */
   setupLeg(parent, side, offsetX) {
     // 고관절 볼
-    const hipBall = this.createJointBall(0.09, 'shorts');
+    const hipBall = this.createJointBall(0.085, 'shorts');
     hipBall.position.set(offsetX, -0.08, 0);
     parent.add(hipBall);
 
-    // 고관절 피벗
     const hipJoint = new THREE.Group();
     hipJoint.position.set(offsetX, -0.08, 0);
     parent.add(hipJoint);
     this.joints[`${side}Hip`] = hipJoint;
 
-    // 허벅지 (테이퍼드)
-    const thighGeo = new THREE.CylinderGeometry(0.095, 0.075, 0.40, 8);
+    // 허벅지 (탄탄한 축구선수 대퇴사두근)
+    const thighGeo = new THREE.CylinderGeometry(0.10, 0.078, 0.40, 8);
     const thighMesh = this.createPolyMesh(thighGeo, 'skin');
     thighMesh.position.set(0, -0.20, 0);
     hipJoint.add(thighMesh);
 
-    // 무릎 관절 볼
+    // 무릎
     const kneeBall = this.createJointBall(0.075, 'skin');
     kneeBall.position.set(0, -0.40, 0);
     hipJoint.add(kneeBall);
 
-    // 무릎 피벗
     const kneeGroup = new THREE.Group();
     kneeGroup.position.set(0, -0.40, 0);
     hipJoint.add(kneeGroup);
     this.joints[`${side}Knee`] = kneeGroup;
 
-    // 정강이/양말 (테이퍼드)
-    const shinGeo = new THREE.CylinderGeometry(0.075, 0.060, 0.38, 8);
+    // 정강이/양말
+    const shinGeo = new THREE.CylinderGeometry(0.078, 0.062, 0.38, 8);
     const shinMesh = this.createPolyMesh(shinGeo, 'socks');
     shinMesh.position.set(0, -0.19, 0);
     kneeGroup.add(shinMesh);
 
-    // 발목 관절 볼
+    // 발목
     const ankleBall = this.createJointBall(0.055, 'shoes');
     ankleBall.position.set(0, -0.38, 0);
     kneeGroup.add(ankleBall);
 
-    // 발 (축구화)
+    // 발
     const footGroup = new THREE.Group();
     footGroup.position.set(0, -0.38, 0);
     kneeGroup.add(footGroup);
@@ -388,7 +379,7 @@ export class CharacterModel {
   }
 
   /**
-   * 대두(Bobblehead) 슬라이더 실시간 크기 조절
+   * 대두(Bobblehead) 슬라이더 조절
    */
   setHeadScale(scale) {
     this.headScale = Math.max(0.8, Math.min(2.5, scale));
@@ -476,16 +467,19 @@ export class CharacterModel {
   }
 
   /**
-   * 모든 관절 회전값 초기화
+   * 관절 각도 초기화
    */
   resetJoints() {
     Object.values(this.joints).forEach((joint) => {
       joint.rotation.set(0, 0, 0);
+      joint.position.y = joint.position.y;
     });
+    this.group.position.set(0, 0, 0);
   }
 
   /**
    * 챌린지 포즈 프리셋 적용
+   * @param {'DEFAULT'|'GEOJE_YAHO'|'CHOI_SAN_BAD'|'RONALDO_SIU'|'CUTE_HEART'} poseName
    */
   applyPose(poseName) {
     this.currentPose = poseName;
@@ -495,18 +489,34 @@ export class CharacterModel {
 
     switch (poseName) {
       case 'GEOJE_YAHO':
-        // [리센느 거제 야호]: 젖힌 상체 + 양손 입가 확성기
-        j.torso.rotation.x = -0.28;
-        j.neck.rotation.x = -0.15;
-        j.head.rotation.x = -0.20;
+        // [리센느 미나미 거제 야호 시그니처 챌린지]:
+        // 1. 오른손: 입가에 대어 "야호~" 외치는 한 손 확성기
+        // 2. 왼손: 전방으로 손목을 꺾어 내미는 시그니처 갸루피스 (Gyaru Peace)
+        // 3. 하체: 한쪽 다리(왼쪽 다리) 무릎을 번쩍 접어 뒤/옆으로 경쾌하게 들기 (외다리 밸런스)
+        // 4. 상체: 활기차게 살짝 비틀고 젖히며 신난 분위기 연출
 
-        j.leftShoulder.rotation.set(-1.15, 0.45, 0.60);
-        j.leftElbow.rotation.set(-1.45, 0, -0.30);
-        j.rightShoulder.rotation.set(-1.15, -0.45, -0.60);
-        j.rightElbow.rotation.set(-1.45, 0, 0.30);
+        // 상체 비틀기 & 신난 틸트
+        j.torso.rotation.set(-0.10, 0.15, -0.08);
+        j.neck.rotation.set(-0.05, -0.10, 0.10);
+        j.head.rotation.set(-0.10, -0.10, 0.18); // 갸루 특유의 갸우뚱 각도
 
-        j.leftHip.rotation.set(0.05, 0, -0.15);
-        j.rightHip.rotation.set(0.05, 0, 0.15);
+        // 우측 팔: 입가 한 손 확성기 ("야호~")
+        j.rightShoulder.rotation.set(-1.25, -0.35, -0.40);
+        j.rightElbow.rotation.set(-1.65, 0.20, 0.15);
+        j.rightHand.rotation.set(0.10, -0.30, 0);
+
+        // 좌측 팔: 전방을 향해 엣지있게 뻗은 갸루피스 (팔 앞으로 뻗고 손목 뒤집어 V자 각도)
+        j.leftShoulder.rotation.set(-1.05, 0.40, 0.35);
+        j.leftElbow.rotation.set(-0.35, 0.20, 0.85); // 팔꿈치 살짝 접어 앞으로 내밈
+        j.leftHand.rotation.set(0.60, 0.40, -1.20); // 갸루피스 손목 꺾기
+
+        // 지지하는 오른 다리: 탄탄하게 바닥 접지
+        j.rightHip.rotation.set(0.02, 0, 0.05);
+
+        // 번쩍 들어올린 왼 다리: 무릎을 90도 이상 뒤로 접어 발랄하게 치켜듦
+        j.leftHip.rotation.set(-0.35, 0.25, -0.45); // 고관절 외전 및 후방 굴곡
+        j.leftKnee.rotation.set(1.55, 0, -0.10);    // 무릎 90도 꺾기
+        j.leftFoot.rotation.set(-0.25, 0, 0);
         break;
 
       case 'CHOI_SAN_BAD':
@@ -559,10 +569,11 @@ export class CharacterModel {
 
       case 'DEFAULT':
       default:
-        j.leftShoulder.rotation.set(0, 0, 0.15);
-        j.rightShoulder.rotation.set(0, 0, -0.15);
-        j.leftHip.rotation.set(0, 0, -0.08);
-        j.rightHip.rotation.set(0, 0, 0.08);
+        // 프로 남자 축구선수 기본 당당한 스탠스 (어깨너비 당당한 벌림)
+        j.leftShoulder.rotation.set(0, 0, 0.12);
+        j.rightShoulder.rotation.set(0, 0, -0.12);
+        j.leftHip.rotation.set(0, 0, -0.06);
+        j.rightHip.rotation.set(0, 0, 0.06);
         break;
     }
   }
