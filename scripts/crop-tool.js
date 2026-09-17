@@ -14,13 +14,16 @@ export class CropTool {
     this.onAddPiece = options.onAddPiece || (() => {});
 
     this.currentImage = null;
-    this.shapeType = 'rectangle'; // 'rectangle' | 'circle'
+    this.shapeType = 'polygon'; // 'polygon' | 'rectangle' | 'circle'
     this.roughness = 0.075;
 
     this.isOpen = false;
     this.isDragging = false;
     this.dragStart = { x: 0, y: 0 };
     this.dragCurrent = { x: 0, y: 0 };
+
+    // 자유 올가미(Lasso) 트레이싱 포인트 배열 (정규화 비율 0.0 ~ 1.0: {x, y})
+    this.lassoPoints = [];
 
     // 정규화된 크롭 영역 (0.0 ~ 1.0)
     this.cropNorm = { x: 0.15, y: 0.15, w: 0.7, h: 0.7 };
@@ -66,7 +69,11 @@ export class CropTool {
               <div class="crop-panel-section">
                 <span class="crop-section-label">크롭 형태 선택</span>
                 <div class="crop-shape-toggle-group">
-                  <button type="button" class="shape-toggle-btn active" data-shape="rectangle">
+                  <button type="button" class="shape-toggle-btn active" data-shape="polygon">
+                    <span class="shape-icon lasso-icon"></span>
+                    <span>자유 올가미 찢기 (Lasso Tracing)</span>
+                  </button>
+                  <button type="button" class="shape-toggle-btn" data-shape="rectangle">
                     <span class="shape-icon rect-icon"></span>
                     <span>사각형 (찢긴 종이)</span>
                   </button>
@@ -98,13 +105,17 @@ export class CropTool {
                     <span>크기 (W &times; H):</span>
                     <span id="crop-info-size">0 &times; 0 px</span>
                   </div>
+                  <div class="crop-info-row" id="crop-info-pts-row" style="display: none;">
+                    <span>트레이싱 포인트:</span>
+                    <span id="crop-info-pts">0개</span>
+                  </div>
                 </div>
               </div>
 
               <!-- 가이드 안내 문구 -->
-              <div class="crop-guide-note">
-                드래그하여 원하는 이미지 영역을 선택하세요.<br>
-                선택된 영역의 외곽선이 절차적 노이즈로 거칠게 찢겨지며 3D 씬에 새로운 레이어로 추가됩니다.
+              <div class="crop-guide-note" id="crop-guide-note-text">
+                마우스로 피사체 둘레를 자유롭게 둘러 그리세요.<br>
+                마우스를 떼면 자동으로 시작점과 끝점이 닫히며 자연스러운 찢김 단면이 3D 팝업 조각으로 추출됩니다.
               </div>
             </div>
           </div>
@@ -171,6 +182,23 @@ export class CropTool {
         const targetBtn = e.currentTarget;
         targetBtn.classList.add('active');
         this.shapeType = targetBtn.getAttribute('data-shape');
+
+        // 가이드 안내 텍스트 동적 갱신
+        const guideEl = document.getElementById('crop-guide-note-text');
+        if (guideEl) {
+          if (this.shapeType === 'polygon') {
+            guideEl.innerHTML = '마우스로 피사체 둘레를 자유롭게 둘러 그리세요.<br>마우스를 떼면 자동으로 시작점과 끝점이 닫히며 자연스러운 찢김 단면이 3D 팝업 조각으로 추출됩니다.';
+          } else if (this.shapeType === 'circle') {
+            guideEl.innerHTML = '드래그하여 원형 찢긴 스티커 영역을 선택하세요.<br>원형 둘레가 자연스러운 섬유 노이즈와 함께 찢겨져 3D 씬에 추가됩니다.';
+          } else {
+            guideEl.innerHTML = '드래그하여 사각형 찢긴 종이 영역을 선택하세요.<br>선택된 4개 변이 거칠게 찢겨지며 3D 씬에 새로운 레이어로 추가됩니다.';
+          }
+        }
+
+        // 형태 전환 시 기존 올가미 패스 초기화
+        if (this.shapeType === 'polygon' && this.lassoPoints.length < 3) {
+          this._initDefaultPolygon();
+        }
         this.renderCanvas();
       });
     });
@@ -189,6 +217,14 @@ export class CropTool {
     if (selectAllBtn) {
       selectAllBtn.addEventListener('click', () => {
         this.cropNorm = { x: 0.05, y: 0.05, w: 0.9, h: 0.9 };
+        if (this.shapeType === 'polygon') {
+          this.lassoPoints = [
+            { x: 0.05, y: 0.05 },
+            { x: 0.95, y: 0.05 },
+            { x: 0.95, y: 0.95 },
+            { x: 0.05, y: 0.95 }
+          ];
+        }
         this.renderCanvas();
       });
     }
@@ -197,6 +233,9 @@ export class CropTool {
     if (resetBtn) {
       resetBtn.addEventListener('click', () => {
         this.cropNorm = { x: 0.15, y: 0.15, w: 0.7, h: 0.7 };
+        if (this.shapeType === 'polygon') {
+          this._initDefaultPolygon();
+        }
         this.renderCanvas();
       });
     }
@@ -219,6 +258,27 @@ export class CropTool {
   }
 
   /**
+   * 기본 다각형(타원형 16각형) 초기화
+   * @private
+   */
+  _initDefaultPolygon() {
+    this.lassoPoints = [];
+    const cx = 0.5;
+    const cy = 0.5;
+    const rx = 0.28;
+    const ry = 0.28;
+    const steps = 16;
+    for (let i = 0; i < steps; i++) {
+      const theta = (i / steps) * Math.PI * 2;
+      this.lassoPoints.push({
+        x: Number((cx + rx * Math.cos(theta)).toFixed(4)),
+        y: Number((cy + ry * Math.sin(theta)).toFixed(4))
+      });
+    }
+    this._updateBoundsFromLasso();
+  }
+
+  /**
    * 이미지 객체를 받아 크롭 모달 열기
    * @param {HTMLImageElement} image
    */
@@ -233,6 +293,7 @@ export class CropTool {
     this.modalEl.classList.add('active');
 
     this.cropNorm = { x: 0.15, y: 0.15, w: 0.7, h: 0.7 };
+    this._initDefaultPolygon();
 
     requestAnimationFrame(() => {
       this._fitCanvasSize();
@@ -289,14 +350,23 @@ export class CropTool {
     const rect = this.canvas.getBoundingClientRect();
     const x = Math.max(0, Math.min(e.clientX - rect.left, rect.width));
     const y = Math.max(0, Math.min(e.clientY - rect.top, rect.height));
+    const normX = x / rect.width;
+    const normY = y / rect.height;
 
     this.isDragging = true;
-    this.dragStart = { x: x / rect.width, y: y / rect.height };
+    this.dragStart = { x: normX, y: normY };
     this.dragCurrent = { ...this.dragStart };
+
+    if (this.shapeType === 'polygon') {
+      // 신규 자유 올가미(Lasso) 드래그 시작: 이전 궤적 초기화 및 첫 포인트 등록
+      this.lassoPoints = [{ x: normX, y: normY }];
+    }
 
     try {
       this.canvas.setPointerCapture(e.pointerId);
     } catch (_) {}
+
+    this.renderCanvas();
   }
 
   /**
@@ -309,28 +379,45 @@ export class CropTool {
     const rect = this.canvas.getBoundingClientRect();
     const x = Math.max(0, Math.min(e.clientX - rect.left, rect.width));
     const y = Math.max(0, Math.min(e.clientY - rect.top, rect.height));
+    const normX = x / rect.width;
+    const normY = y / rect.height;
 
-    this.dragCurrent = { x: x / rect.width, y: y / rect.height };
+    this.dragCurrent = { x: normX, y: normY };
 
-    const minX = Math.min(this.dragStart.x, this.dragCurrent.x);
-    const minY = Math.min(this.dragStart.y, this.dragCurrent.y);
-    const w = Math.abs(this.dragCurrent.x - this.dragStart.x);
-    const h = Math.abs(this.dragCurrent.y - this.dragStart.y);
+    if (this.shapeType === 'polygon') {
+      // 이전 포인트와 일정 픽셀 이상 이동 시에만 새 포인트 등록 (노이즈 방지 및 최적화)
+      const lastPt = this.lassoPoints[this.lassoPoints.length - 1];
+      if (lastPt) {
+        const dx = (normX - lastPt.x) * rect.width;
+        const dy = (normY - lastPt.y) * rect.height;
+        if (Math.hypot(dx, dy) >= 3.0) {
+          this.lassoPoints.push({ x: normX, y: normY });
+        }
+      } else {
+        this.lassoPoints.push({ x: normX, y: normY });
+      }
+      this._updateBoundsFromLasso();
+    } else {
+      const minX = Math.min(this.dragStart.x, this.dragCurrent.x);
+      const minY = Math.min(this.dragStart.y, this.dragCurrent.y);
+      const w = Math.abs(this.dragCurrent.x - this.dragStart.x);
+      const h = Math.abs(this.dragCurrent.y - this.dragStart.y);
 
-    let finalW = w;
-    let finalH = h;
-    if (this.shapeType === 'circle') {
-      const size = Math.max(w, h);
-      finalW = size;
-      finalH = size;
+      let finalW = w;
+      let finalH = h;
+      if (this.shapeType === 'circle') {
+        const size = Math.max(w, h);
+        finalW = size;
+        finalH = size;
+      }
+
+      this.cropNorm = {
+        x: Math.max(0, Math.min(minX, 1 - finalW)),
+        y: Math.max(0, Math.min(minY, 1 - finalH)),
+        w: Math.max(0.04, Math.min(finalW, 1)),
+        h: Math.max(0.04, Math.min(finalH, 1))
+      };
     }
-
-    this.cropNorm = {
-      x: Math.max(0, Math.min(minX, 1 - finalW)),
-      y: Math.max(0, Math.min(minY, 1 - finalH)),
-      w: Math.max(0.04, Math.min(finalW, 1)),
-      h: Math.max(0.04, Math.min(finalH, 1))
-    };
 
     this.renderCanvas();
   }
@@ -342,10 +429,51 @@ export class CropTool {
   _onPointerUp(e) {
     if (!this.isDragging) return;
     this.isDragging = false;
+
     try {
       this.canvas.releasePointerCapture(e.pointerId);
     } catch (_) {}
+
+    if (this.shapeType === 'polygon') {
+      // 포인트가 3개 미만이면 기본 다각형으로 안전 복구
+      if (this.lassoPoints.length < 3) {
+        this._initDefaultPolygon();
+      } else {
+        this._updateBoundsFromLasso();
+      }
+    }
+
     this.renderCanvas();
+  }
+
+  /**
+   * 올가미 포인트들의 바운딩 박스를 계산하여 cropNorm 동기화
+   * @private
+   */
+  _updateBoundsFromLasso() {
+    if (!this.lassoPoints || this.lassoPoints.length === 0) return;
+
+    let minX = 1.0;
+    let minY = 1.0;
+    let maxX = 0.0;
+    let maxY = 0.0;
+
+    for (const pt of this.lassoPoints) {
+      if (pt.x < minX) minX = pt.x;
+      if (pt.x > maxX) maxX = pt.x;
+      if (pt.y < minY) minY = pt.y;
+      if (pt.y > maxY) maxY = pt.y;
+    }
+
+    const w = Math.max(0.02, maxX - minX);
+    const h = Math.max(0.02, maxY - minY);
+
+    this.cropNorm = {
+      x: Math.max(0, Math.min(minX, 1 - w)),
+      y: Math.max(0, Math.min(minY, 1 - h)),
+      w: Math.min(w, 1),
+      h: Math.min(h, 1)
+    };
   }
 
   /**
@@ -365,7 +493,7 @@ export class CropTool {
 
     // 2. 어두운 오버레이 딤 처리
     ctx.save();
-    ctx.fillStyle = 'rgba(10, 12, 16, 0.65)';
+    ctx.fillStyle = 'rgba(10, 12, 16, 0.68)';
     ctx.fillRect(0, 0, w, h);
 
     // 3. 선택 영역 클리핑 복원
@@ -376,7 +504,18 @@ export class CropTool {
 
     ctx.save();
     ctx.beginPath();
-    if (this.shapeType === 'circle') {
+
+    if (this.shapeType === 'polygon') {
+      if (this.lassoPoints && this.lassoPoints.length > 1) {
+        ctx.moveTo(this.lassoPoints[0].x * w, this.lassoPoints[0].y * h);
+        for (let i = 1; i < this.lassoPoints.length; i++) {
+          ctx.lineTo(this.lassoPoints[i].x * w, this.lassoPoints[i].y * h);
+        }
+        ctx.closePath();
+      } else {
+        ctx.rect(cropPixelX, cropPixelY, cropPixelW, cropPixelH);
+      }
+    } else if (this.shapeType === 'circle') {
       const cx = cropPixelX + cropPixelW / 2;
       const cy = cropPixelY + cropPixelH / 2;
       const radius = Math.min(cropPixelW, cropPixelH) / 2;
@@ -389,13 +528,42 @@ export class CropTool {
     ctx.drawImage(this.currentImage, 0, 0, w, h);
     ctx.restore();
 
-    // 4. 선택 영역 테두리 가이드라인
-    ctx.lineWidth = 2;
-    ctx.strokeStyle = '#3b82f6';
+    // 4. 선택 영역 테두리 가이드라인 시각화
+    ctx.lineWidth = 2.5;
+    ctx.strokeStyle = '#38bdf8';
     ctx.setLineDash([6, 4]);
 
     ctx.beginPath();
-    if (this.shapeType === 'circle') {
+    if (this.shapeType === 'polygon') {
+      if (this.lassoPoints && this.lassoPoints.length > 0) {
+        ctx.moveTo(this.lassoPoints[0].x * w, this.lassoPoints[0].y * h);
+        for (let i = 1; i < this.lassoPoints.length; i++) {
+          ctx.lineTo(this.lassoPoints[i].x * w, this.lassoPoints[i].y * h);
+        }
+        if (!this.isDragging && this.lassoPoints.length >= 3) {
+          ctx.closePath();
+        }
+        ctx.stroke();
+
+        // 트레이싱 시작점 및 현재점 하이라이트
+        if (this.lassoPoints.length > 0) {
+          const first = this.lassoPoints[0];
+          ctx.setLineDash([]);
+          ctx.fillStyle = '#22c55e'; // 시작점 녹색
+          ctx.beginPath();
+          ctx.arc(first.x * w, first.y * h, 4.5, 0, Math.PI * 2);
+          ctx.fill();
+
+          if (this.isDragging) {
+            const last = this.lassoPoints[this.lassoPoints.length - 1];
+            ctx.fillStyle = '#f43f5e'; // 드래그 중인 끝점 적색
+            ctx.beginPath();
+            ctx.arc(last.x * w, last.y * h, 4.5, 0, Math.PI * 2);
+            ctx.fill();
+          }
+        }
+      }
+    } else if (this.shapeType === 'circle') {
       const cx = cropPixelX + cropPixelW / 2;
       const cy = cropPixelY + cropPixelH / 2;
       const radius = Math.min(cropPixelW, cropPixelH) / 2;
@@ -463,9 +631,20 @@ export class CropTool {
 
     const posEl = document.getElementById('crop-info-pos');
     const sizeEl = document.getElementById('crop-info-size');
+    const ptsRow = document.getElementById('crop-info-pts-row');
+    const ptsEl = document.getElementById('crop-info-pts');
 
     if (posEl) posEl.textContent = `${realX}, ${realY}`;
     if (sizeEl) sizeEl.textContent = `${realW} × ${realH} px`;
+
+    if (ptsRow && ptsEl) {
+      if (this.shapeType === 'polygon') {
+        ptsRow.style.display = 'flex';
+        ptsEl.textContent = `${this.lassoPoints ? this.lassoPoints.length : 0}개`;
+      } else {
+        ptsRow.style.display = 'none';
+      }
+    }
   }
 
   /**
@@ -478,10 +657,16 @@ export class CropTool {
     const origW = this.currentImage.naturalWidth;
     const origH = this.currentImage.naturalHeight;
 
-    let sx = Math.max(0, Math.round(this.cropNorm.x * origW));
-    let sy = Math.max(0, Math.round(this.cropNorm.y * origH));
-    let sw = Math.min(origW - sx, Math.round(this.cropNorm.w * origW));
-    let sh = Math.min(origH - sy, Math.round(this.cropNorm.h * origH));
+    // 바운딩 박스 정규화 범위 및 픽셀 좌표 계산
+    let minX = this.cropNorm.x;
+    let minY = this.cropNorm.y;
+    let maxX = this.cropNorm.x + this.cropNorm.w;
+    let maxY = this.cropNorm.y + this.cropNorm.h;
+
+    let sx = Math.max(0, Math.round(minX * origW));
+    let sy = Math.max(0, Math.round(minY * origH));
+    let sw = Math.min(origW - sx, Math.round((maxX - minX) * origW));
+    let sh = Math.min(origH - sy, Math.round((maxY - minY) * origH));
 
     if (sw < 16 || sh < 16) {
       alert('크롭 영역이 너무 작습니다. 영역을 더 크게 선택해주세요.');
@@ -494,7 +679,7 @@ export class CropTool {
       sh = minSize;
     }
 
-    // 1. 오프스크린 캔버스에 선택 영역 정밀 복사
+    // 1. 오프스크린 캔버스에 바운딩 박스 영역 정밀 크롭
     const cropCanvas = document.createElement('canvas');
     cropCanvas.width = sw;
     cropCanvas.height = sh;
@@ -506,7 +691,7 @@ export class CropTool {
     texture.colorSpace = THREE.SRGBColorSpace;
     texture.needsUpdate = true;
 
-    // 3. 3D 월드 크기 계산
+    // 3. 3D 월드 크기 및 종횡비 계산
     const aspect = sw / sh;
     let worldW = 3.2;
     let worldH = 3.2 / aspect;
@@ -519,18 +704,48 @@ export class CropTool {
       worldH = worldW / aspect;
     }
 
+    // 4. 원본 이미지 중심 기준의 상대 중심 (centerOffset: -0.5 ~ +0.5)
+    // 원본 이미지 가로세로 비율 고려 3D 매핑 시 사용
+    const centerNormX = (minX + maxX) / 2;
+    const centerNormY = (minY + maxY) / 2;
+    const centerOffset = {
+      x: Number((centerNormX - 0.5).toFixed(4)),
+      y: Number((centerNormY - 0.5).toFixed(4))
+    };
+
+    // 5. 다각형인 경우 바운딩 박스 기준의 상대 정규화 포인트 변환 (0.0 ~ 1.0)
+    let relativePoints = [];
+    if (this.shapeType === 'polygon' && this.lassoPoints && this.lassoPoints.length >= 3) {
+      const bw = Math.max(1e-6, maxX - minX);
+      const bh = Math.max(1e-6, maxY - minY);
+      relativePoints = this.lassoPoints.map(pt => ({
+        x: Number(((pt.x - minX) / bw).toFixed(4)),
+        y: Number(((pt.y - minY) / bh).toFixed(4))
+      }));
+    }
+
     const radius = 1.35;
     const seed = Math.floor(Math.random() * 100000);
 
     const result = {
       texture,
       cropCanvas,
+      textureCanvas: cropCanvas,
       shapeType: this.shapeType,
       roughness: this.roughness,
       seed,
       width: Number(worldW.toFixed(2)),
       height: Number(worldH.toFixed(2)),
       radius: radius,
+      aspectRatio: Number(aspect.toFixed(3)),
+      points: relativePoints,
+      uvBounds: {
+        minX: Number(minX.toFixed(4)),
+        minY: Number(minY.toFixed(4)),
+        maxX: Number(maxX.toFixed(4)),
+        maxY: Number(maxY.toFixed(4))
+      },
+      centerOffset: centerOffset,
       cropRect: { sx, sy, sw, sh, origW, origH }
     };
 
@@ -538,3 +753,4 @@ export class CropTool {
     this.onAddPiece(result);
   }
 }
+

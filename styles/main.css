@@ -802,6 +802,12 @@ input[type="range"] {
   border: 2px dashed currentColor;
 }
 
+.lasso-icon {
+  border-radius: 40% 60% 70% 30% / 40% 50% 60% 50%;
+  border-style: dotted;
+  transform: rotate(-15deg);
+}
+
 .rect-icon {
   border-radius: 2px;
 }

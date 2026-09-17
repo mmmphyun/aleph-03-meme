@@ -508,6 +508,10 @@ class PaperStudioApp {
       const img = new Image();
       img.onload = () => {
         this.showToast(`이미지 로드 완료: ${file.name}`, 'success');
+        // 원본 사진을 3D 뒤쪽 배경판에 자동 매핑 (터널북/팝업북 백드롭 연동)
+        if (this.sceneManager && typeof this.sceneManager.setBackdropImage === 'function') {
+          this.sceneManager.setBackdropImage(img, { baseWidth: 6.0, zPosition: -0.05 });
+        }
         this.cropTool.openWithImage(img);
       };
       img.onerror = () => {
@@ -531,6 +535,10 @@ class PaperStudioApp {
     // 1. assets/samples/sample-art.png 로드 시도
     img.onload = () => {
       this.showToast('내장 샘플 아트 이미지를 불러왔습니다.', 'info');
+      // 배경판에 샘플 아트워크 자동 매핑
+      if (this.sceneManager && typeof this.sceneManager.setBackdropImage === 'function') {
+        this.sceneManager.setBackdropImage(img, { baseWidth: 6.0, zPosition: -0.05 });
+      }
       this.cropTool.openWithImage(img);
     };
 
@@ -541,6 +549,9 @@ class PaperStudioApp {
       const fallbackImg = new Image();
       fallbackImg.onload = () => {
         this.showToast('절차적 내장 샘플 아트를 생성했습니다.', 'info');
+        if (this.sceneManager && typeof this.sceneManager.setBackdropImage === 'function') {
+          this.sceneManager.setBackdropImage(fallbackImg, { baseWidth: 6.0, zPosition: -0.05 });
+        }
         this.cropTool.openWithImage(fallbackImg);
       };
       fallbackImg.src = fallbackCanvas.toDataURL('image/png');
@@ -593,12 +604,13 @@ class PaperStudioApp {
   }
 
   /**
-   * 크롭 도구에서 찢긴 조각 추가 시 3D 씬 연동 및 Z-Stack 자동 배치
+   * 크롭 도구에서 찢긴 조각 추가 시 3D 씬 연동 및 원본 배경 사진 상의 3D 위치 일치 배치
    * @param {Object} cropData
    */
   handleAddCroppedPiece(cropData) {
-    // 1. Z축 높이 자동 스택 (0.0, 0.15, 0.30...)
-    const zStackHeight = Number((this.layers.length * 0.15).toFixed(2));
+    // 1. Z축 높이 (기본 팝업 돌출 깊이 Z = 0.60, 다층 스택 시 오프셋 가산)
+    const popupDepth = 0.60;
+    const zStackHeight = Number((popupDepth + this.layers.length * 0.08).toFixed(2));
 
     // cropCanvas가 전달되었으나 texture가 없는 경우 THREE.CanvasTexture 자동 생성 (T03-C14)
     if (cropData.cropCanvas && !cropData.texture) {
@@ -616,11 +628,50 @@ class PaperStudioApp {
       bevelSize: 0.005
     };
 
-    if (cropData.shapeType === 'circle') {
+    // 배경판 3D 크기 파라미터 획득 (기본 6.0 및 종횡비)
+    const backdrop = this.sceneManager?.backdropMesh || this.sceneManager?.boardMesh;
+    const bgParams = backdrop?.geometry?.parameters || { width: 6.0, height: 6.0 };
+    const bgWidth = bgParams.width || 6.0;
+    const bgHeight = bgParams.height || 6.0;
+
+    // uvBounds 및 원본 이미지 대비 조각의 3D 월드 크기 산출
+    let uvBounds = cropData.uvBounds;
+    let pieceW = cropData.width;
+    let pieceH = cropData.height;
+
+    if (uvBounds && uvBounds.maxX > uvBounds.minX && uvBounds.maxY > uvBounds.minY) {
+      pieceW = (uvBounds.maxX - uvBounds.minX) * bgWidth;
+      pieceH = (uvBounds.maxY - uvBounds.minY) * bgHeight;
+    }
+
+    if (cropData.shapeType === 'polygon' && Array.isArray(cropData.points) && cropData.points.length >= 3) {
+      // 바운딩 박스 중심(0, 0) 기준의 로컬 폴리곤 좌표로 정렬
+      const localPolygonPoints = cropData.points.map(pt => ({
+        x: Number(((pt.x - 0.5) * pieceW).toFixed(4)),
+        y: Number(((0.5 - pt.y) * pieceH).toFixed(4))
+      }));
+
+      mesh = createTornPaperMesh(
+        'polygon',
+        {
+          points: localPolygonPoints,
+          roughness: cropData.roughness,
+          detail: 20,
+          seed: cropData.seed,
+          extrudeOptions: extrudeOpts
+        },
+        {
+          map: cropData.texture,
+          roughness: 0.82,
+          metalness: 0.02
+        }
+      );
+    } else if (cropData.shapeType === 'circle') {
+      const radius = Math.min(pieceW, pieceH) / 2;
       mesh = createTornPaperMesh(
         'circle',
         {
-          radius: cropData.radius,
+          radius: radius,
           roughness: cropData.roughness,
           segments: 150,
           seed: cropData.seed,
@@ -636,8 +687,8 @@ class PaperStudioApp {
       mesh = createTornPaperMesh(
         'rectangle',
         {
-          width: cropData.width,
-          height: cropData.height,
+          width: pieceW,
+          height: pieceH,
           roughness: cropData.roughness,
           detail: 70,
           seed: cropData.seed,
@@ -651,14 +702,32 @@ class PaperStudioApp {
       );
     }
 
-    // 3. 3D 위치 지정 (약간의 분산 오프셋)
-    const offsetX = (Math.random() - 0.5) * 0.4;
-    const offsetY = (Math.random() - 0.5) * 0.4;
-    mesh.position.set(offsetX, offsetY, zStackHeight);
+    // 3. 3D X, Y 위치를 원본 배경 사진 상의 위치와 정확히 일치하도록 배치
+    let posX = 0;
+    let posY = 0;
+
+    if (cropData.centerOffset) {
+      posX = Number((cropData.centerOffset.x * bgWidth).toFixed(3));
+      // Three.js Y축은 위가 양수이므로 부호 반전
+      posY = Number((-cropData.centerOffset.y * bgHeight).toFixed(3));
+    } else if (uvBounds) {
+      const uMid = (uvBounds.minX + uvBounds.maxX) / 2;
+      const vMid = (uvBounds.minY + uvBounds.maxY) / 2;
+      posX = Number(((uMid - 0.5) * bgWidth).toFixed(3));
+      posY = Number(((0.5 - vMid) * bgHeight).toFixed(3));
+    }
+
+    mesh.position.set(posX, posY, zStackHeight);
 
     // 4. 메타데이터 부착
     const layerNum = this.layers.length + 1;
-    const typeTitle = cropData.shapeType === 'circle' ? '원형 스티커' : '사각 찢긴 종이';
+    let typeTitle = '사각 찢긴 종이';
+    if (cropData.shapeType === 'polygon') {
+      typeTitle = '올가미 팝업 조각';
+    } else if (cropData.shapeType === 'circle') {
+      typeTitle = '원형 스티커';
+    }
+
     const textureDataUrl = cropData.cropCanvas ? cropData.cropCanvas.toDataURL('image/png') : null;
     mesh.userData = {
       id: `layer_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
@@ -667,8 +736,8 @@ class PaperStudioApp {
       zIndex: zStackHeight,
       cropData: cropData,
       textureDataUrl: textureDataUrl,
-      width: cropData.width,
-      height: cropData.height,
+      width: pieceW,
+      height: pieceH,
       radius: cropData.radius,
       roughness: cropData.roughness,
       seed: cropData.seed,
@@ -683,7 +752,7 @@ class PaperStudioApp {
     this.selectLayer(mesh);
     this.updateLayerListUI();
 
-    this.showToast(`신규 레이어 추가 완료 (Z = ${zStackHeight})`, 'success');
+    this.showToast(`신규 팝업 조각 추가 완료 (Z = ${zStackHeight})`, 'success');
   }
 
   /**
@@ -722,6 +791,8 @@ class PaperStudioApp {
     const valY = document.getElementById('val-piece-y');
     const valRot = document.getElementById('val-piece-rot');
     const valScale = document.getElementById('val-piece-scale');
+    const sliderZ = document.getElementById('slider-piece-z');
+    const valZ = document.getElementById('val-piece-z');
 
     if (!this.selectedLayer) {
       if (nameEl) nameEl.textContent = '선택된 조각 없음';
@@ -750,6 +821,11 @@ class PaperStudioApp {
     const scale = Number(mesh.scale.x.toFixed(2));
     if (sliderScale) sliderScale.value = scale;
     if (valScale) valScale.textContent = `${scale.toFixed(2)}×`;
+
+    // 팝업 돌출 깊이 (Z)
+    const zPos = Number(mesh.position.z.toFixed(2));
+    if (sliderZ) sliderZ.value = zPos;
+    if (valZ) valZ.textContent = zPos.toFixed(2);
   }
 
   /**
@@ -761,11 +837,13 @@ class PaperStudioApp {
     const sliderY = document.getElementById('slider-piece-y');
     const sliderRot = document.getElementById('slider-piece-rot');
     const sliderScale = document.getElementById('slider-piece-scale');
+    const sliderZ = document.getElementById('slider-piece-z');
 
     const valX = document.getElementById('val-piece-x');
     const valY = document.getElementById('val-piece-y');
     const valRot = document.getElementById('val-piece-rot');
     const valScale = document.getElementById('val-piece-scale');
+    const valZ = document.getElementById('val-piece-z');
 
     if (sliderX) {
       sliderX.addEventListener('input', (e) => {
@@ -800,6 +878,20 @@ class PaperStudioApp {
         const scale = parseFloat(e.target.value);
         this.selectedLayer.scale.set(scale, scale, 1);
         if (valScale) valScale.textContent = `${scale.toFixed(2)}×`;
+      });
+    }
+
+    // 팝업 돌출 깊이(Pop-up Depth) 슬라이더 연동 (Z = 0.10 ~ 1.50)
+    if (sliderZ) {
+      sliderZ.addEventListener('input', (e) => {
+        if (!this.selectedLayer) return;
+        const z = parseFloat(e.target.value);
+        this.selectedLayer.position.z = z;
+        this.selectedLayer.userData.zIndex = z;
+        if (valZ) valZ.textContent = z.toFixed(2);
+        const zEl = document.getElementById('selected-piece-z');
+        if (zEl) zEl.textContent = `Z: ${z.toFixed(2)}`;
+        this.updateLayerListUI();
       });
     }
   }
@@ -966,6 +1058,7 @@ class PaperStudioApp {
         width: ud.cropData?.width || ud.width || 4.0,
         height: ud.cropData?.height || ud.height || 2.8,
         radius: ud.cropData?.radius || ud.radius || 1.25,
+        points: ud.cropData?.points || ud.points || null,
         roughness: ud.cropData?.roughness || ud.roughness || this.roughness,
         seed: ud.cropData?.seed || ud.seed || (42 + index * 137),
         color: ud.color || (mesh.material?.color ? `#${mesh.material.color.getHexString()}` : '#ede8dc'),
@@ -1042,7 +1135,25 @@ class PaperStudioApp {
     }
 
     let mesh;
-    if (layerData.shapeType === 'circle') {
+    if (layerData.shapeType === 'polygon' && Array.isArray(layerData.points) && layerData.points.length >= 3) {
+      const pieceW = layerData.width || 4.0;
+      const pieceH = layerData.height || 2.8;
+      const localPolygonPoints = layerData.points.map(pt => ({
+        x: Number(((pt.x - 0.5) * pieceW).toFixed(4)),
+        y: Number(((0.5 - pt.y) * pieceH).toFixed(4))
+      }));
+      mesh = createTornPaperMesh(
+        'polygon',
+        {
+          points: localPolygonPoints,
+          roughness: layerData.roughness || 0.08,
+          detail: 20,
+          seed: layerData.seed || 42,
+          extrudeOptions: extrudeOpts
+        },
+        matOptions
+      );
+    } else if (layerData.shapeType === 'circle') {
       mesh = createTornPaperMesh(
         'circle',
         {
