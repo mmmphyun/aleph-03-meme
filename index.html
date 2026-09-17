@@ -1,0 +1,419 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>3D 페이퍼 스컬프처 &amp; 섀도 아트 스튜디오 (Paper &amp; Shadow Studio)</title>
+  <link rel="stylesheet" href="styles/main.css">
+  <!-- Three.js r160 및 OrbitControls CDN ES Modules Import Map -->
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+      "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+    }
+  }
+  </script>
+</head>
+<body>
+  <!-- 토스트 알림 컨테이너 (T03-C09, C10) -->
+  <div id="toast-container" class="toast-container" aria-live="assertive"></div>
+
+  <div id="app">
+    <!-- 헤더 -->
+    <header class="studio-header">
+      <div class="header-brand">
+        <svg class="brand-icon" viewBox="0 0 24 24">
+          <path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V5h14v14zM7 10h2v7H7zm4-3h2v10h-2zm4 6h2v4h-2z"/>
+        </svg>
+        <div>
+          <h1 class="brand-title">3D 페이퍼 스컬프처 &amp; 섀도 스튜디오</h1>
+          <span class="brand-subtitle">PAPER &amp; SHADOW ART STUDIO // MILESTONE 5</span>
+        </div>
+      </div>
+      <div class="header-meta">
+        <span class="milestone-badge">
+          <span class="milestone-dot"></span>
+          Milestone 5 Ready
+        </span>
+      </div>
+    </header>
+
+    <!-- 메인 워크스페이스 -->
+    <main class="studio-workspace">
+      <!-- 3D 뷰포트 영역 -->
+      <section class="viewport-wrapper" id="viewport-wrapper" aria-label="3D 렌더링 뷰포트">
+        <!-- 3D 캔버스 컨테이너 -->
+        <div id="viewport-canvas-container"></div>
+
+        <!-- 뷰파인더 마스크 오버레이 (Milestone 3: 1:1, 4:5, 9:16) -->
+        <div id="viewfinder-overlay" class="viewfinder-overlay ratio-1-1" aria-hidden="true">
+          <div class="viewfinder-mask-top"></div>
+          <div class="viewfinder-mask-bottom"></div>
+          <div class="viewfinder-mask-left"></div>
+          <div class="viewfinder-mask-right"></div>
+          <div id="viewfinder-frame" class="viewfinder-frame">
+            <span class="vf-corner vf-tl"></span>
+            <span class="vf-corner vf-tr"></span>
+            <span class="vf-corner vf-bl"></span>
+            <span class="vf-corner vf-br"></span>
+            <span id="viewfinder-tag" class="viewfinder-tag">1:1 (1080 &times; 1080)</span>
+          </div>
+        </div>
+
+        <!-- 상단 툴바: 화면비 전환 및 퀵 앵글 조작 -->
+        <div class="viewport-overlay-top" role="toolbar" aria-label="화면비 및 카메라 앵글 조작">
+          <!-- 화면비 전환 툴바 (T03-C11, C12, C13) -->
+          <div class="aspect-ratio-btn-group" role="group" aria-label="화면비 선택">
+            <button type="button" class="aspect-btn active" data-aspect-ratio="1:1" title="정사각형 1:1 (1080x1080)">
+              <span>1:1</span>
+            </button>
+            <button type="button" class="aspect-btn" data-aspect-ratio="4:5" title="세로 피드 4:5 (1080x1350)">
+              <span>4:5</span>
+            </button>
+            <button type="button" class="aspect-btn" data-aspect-ratio="9:16" title="스토리/릴스 9:16 (1080x1920)">
+              <span>9:16</span>
+            </button>
+          </div>
+
+          <div class="toolbar-divider" aria-hidden="true"></div>
+
+          <!-- 퀵 앵글 툴바 -->
+          <div class="quick-angle-btn-group" role="group" aria-label="카메라 앵글 조작">
+            <button type="button" class="quick-angle-btn active" data-camera-view="front" title="정면 뷰 (Front)">
+              <span>정면</span>
+            </button>
+            <button type="button" class="quick-angle-btn" data-camera-view="diagonal" title="대각선 얼짱각도 뷰 (Diagonal)">
+              <span>대각선</span>
+            </button>
+            <button type="button" class="quick-angle-btn" data-camera-view="side" title="측면 입체 단면 뷰 (Side)">
+              <span>측면</span>
+            </button>
+            <button type="button" class="quick-angle-btn" data-camera-view="reset" title="기본 시점 리셋">
+              <span>리셋</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- 카메라 HUD 정보 -->
+        <div class="viewport-hud" aria-live="polite">
+          <div class="hud-row">
+            <span class="hud-label">CAM:</span>
+            <span id="hud-camera-pos">X: 0.00  Y: 0.00  Z: 8.20</span>
+          </div>
+          <div class="hud-row">
+            <span class="hud-label">DIST:</span>
+            <span id="hud-camera-dist">거리: 8.20</span>
+          </div>
+        </div>
+
+        <!-- 마우스 조작 안내 팁 -->
+        <div class="viewport-tip">
+          좌클릭: 360° 궤도 회전 | 우클릭: 패닝 | 휠: 줌
+        </div>
+      </section>
+
+      <!-- 우측 사이드바 패널 -->
+      <aside class="studio-sidebar" aria-label="스튜디오 조작 패널">
+        <!-- 1. 이미지 로드 & 찢기 도구 (T03-C04, C05, C09, C10) -->
+        <div class="sidebar-section">
+          <div class="section-title">
+            <span>이미지 로드 &amp; 찢기 도구</span>
+          </div>
+          <!-- 숨겨진 엄격한 확장자/MIME 검증 파일 인풋 -->
+          <input type="file" id="input-image-upload" accept="image/png, image/jpeg, .png, .jpg, .jpeg" style="display: none;">
+          <div class="control-group">
+            <div class="upload-button-row">
+              <button type="button" id="btn-upload-trigger" class="action-btn action-btn-primary" title="PNG 또는 JPEG 이미지 파일 불러오기">
+                <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor">
+                  <path d="M9 16h6v-6h4l-7-7-7 7h4zm-4 2h14v2H5z"/>
+                </svg>
+                <span>사진 업로드</span>
+              </button>
+              <button type="button" id="btn-sample-trigger" class="action-btn" title="내장 샘플 아트로 바로 찢기 모달 열기">
+                <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor">
+                  <path d="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z"/>
+                </svg>
+                <span>샘플 아트로 찢기</span>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- 2. 찢겨진 메모지 텍스트 라벨 (T03-C03, C06, C07, C08, C14) -->
+        <div class="sidebar-section">
+          <div class="section-title">
+            <span>찢겨진 메모지 텍스트 라벨</span>
+          </div>
+          <!-- 문구 입력창 (T03-C03, T03-C14) -->
+          <div class="control-group">
+            <div class="control-label-row">
+              <label for="input-memo-text">문구 내용 (자동 줄바꿈 &amp; 이모지)</label>
+            </div>
+            <textarea id="input-memo-text" class="memo-textarea" rows="2" placeholder="메모지에 새길 문구를 입력하세요...">찢겨진 종이 위에 남긴
+영감의 한 줄 ✂️✨</textarea>
+          </div>
+
+          <!-- 폰트 크기 슬라이더 (T03-C07) -->
+          <div class="control-group">
+            <div class="control-label-row">
+              <label for="slider-font-size">글꼴 크기 (Font Size)</label>
+              <span id="val-font-size" class="control-value">42px</span>
+            </div>
+            <input type="range" id="slider-font-size" min="12" max="140" step="2" value="42">
+          </div>
+
+          <!-- 폰트 색상 및 메모지 배경 피커 (T03-C08) -->
+          <div class="control-group">
+            <div class="color-picker-row">
+              <div class="color-picker-item">
+                <label for="picker-font-color">글자 색상</label>
+                <div class="color-input-wrapper">
+                  <input type="color" id="picker-font-color" value="#1a1c20">
+                  <span id="val-font-color" class="color-code">#1a1c20</span>
+                </div>
+              </div>
+              <div class="color-picker-item">
+                <label for="picker-paper-color">메모지 색상</label>
+                <div class="color-input-wrapper">
+                  <input type="color" id="picker-paper-color" value="#fbf8ef">
+                  <span id="val-paper-color" class="color-code">#fbf8ef</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 메모지 3D 위치 (X, Y) 및 크기 조절 (T03-C06) -->
+          <div class="control-group">
+            <div class="control-label-row">
+              <label for="slider-memo-x">수평 위치 (X)</label>
+              <span id="val-memo-x" class="control-value">0.00</span>
+            </div>
+            <input type="range" id="slider-memo-x" min="-3.5" max="3.5" step="0.05" value="0.00">
+          </div>
+
+          <div class="control-group">
+            <div class="control-label-row">
+              <label for="slider-memo-y">수직 위치 (Y)</label>
+              <span id="val-memo-y" class="control-value">-1.20</span>
+            </div>
+            <input type="range" id="slider-memo-y" min="-3.5" max="3.5" step="0.05" value="-1.20">
+          </div>
+
+          <div class="control-group">
+            <div class="control-label-row">
+              <label for="slider-memo-scale">메모지 크기 (Scale)</label>
+              <span id="val-memo-scale" class="control-value">1.00×</span>
+            </div>
+            <input type="range" id="slider-memo-scale" min="0.4" max="2.0" step="0.05" value="1.00">
+          </div>
+        </div>
+
+        <!-- 3. 고해상도 카드 내보내기 (T03-C11, C12, C13) -->
+        <div class="sidebar-section">
+          <div class="section-title">
+            <span>고해상도 카드 다운로드</span>
+          </div>
+          <div class="control-group">
+            <button type="button" id="btn-export-png" class="action-btn action-btn-primary" style="padding: 12px 16px; font-size: 13px;">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
+                <path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/>
+              </svg>
+              <span id="export-btn-label">뷰파인더 1:1 PNG 다운로드</span>
+            </button>
+          </div>
+          <div class="export-note">
+            * 3D 카메라를 마우스로 자유롭게 회전시켜 구도를 잡은 뒤 다운로드하면, 화면 속 뷰파인더 사각 영역과 <strong>100% 동일한 고해상도(1080p) 카드 이미지</strong>로 저장됩니다.
+          </div>
+        </div>
+
+        <!-- 4. 선택된 조각 변형 컨트롤 (Transform) -->
+        <div class="sidebar-section">
+          <div class="section-title">
+            <span>선택된 조각 변형 (Transform)</span>
+          </div>
+          <div id="piece-transform-panel" class="selected-piece-box">
+            <div class="selected-piece-header">
+              <span id="selected-piece-name" class="selected-piece-name">선택된 조각 없음</span>
+              <span id="selected-piece-z" class="selected-piece-layer-tag">Z: 0.00</span>
+            </div>
+
+            <!-- X 위치 슬라이더 -->
+            <div class="control-group">
+              <div class="control-label-row">
+                <label for="slider-piece-x">수평 위치 (X)</label>
+                <span id="val-piece-x" class="control-value">0.00</span>
+              </div>
+              <input type="range" id="slider-piece-x" min="-4.0" max="4.0" step="0.05" value="0.00">
+            </div>
+
+            <!-- Y 위치 슬라이더 -->
+            <div class="control-group">
+              <div class="control-label-row">
+                <label for="slider-piece-y">수직 위치 (Y)</label>
+                <span id="val-piece-y" class="control-value">0.00</span>
+              </div>
+              <input type="range" id="slider-piece-y" min="-4.0" max="4.0" step="0.05" value="0.00">
+            </div>
+
+            <!-- Z 회전 각도 슬라이더 -->
+            <div class="control-group">
+              <div class="control-label-row">
+                <label for="slider-piece-rot">회전 각도 (Rot Z)</label>
+                <span id="val-piece-rot" class="control-value">0°</span>
+              </div>
+              <input type="range" id="slider-piece-rot" min="-180" max="180" step="1" value="0">
+            </div>
+
+            <!-- 스케일 슬라이더 -->
+            <div class="control-group">
+              <div class="control-label-row">
+                <label for="slider-piece-scale">크기 비율 (Scale)</label>
+                <span id="val-piece-scale" class="control-value">1.00×</span>
+              </div>
+              <input type="range" id="slider-piece-scale" min="0.3" max="2.5" step="0.05" value="1.00">
+            </div>
+
+            <!-- 삭제 액션 -->
+            <div class="control-group">
+              <button type="button" id="btn-delete-piece" class="action-btn" style="color: #ef4444; border-color: rgba(239, 68, 68, 0.3);">
+                <span>이 조각 삭제하기</span>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- 5. 다층 Z-Stack 레이어 목록 -->
+        <div class="sidebar-section">
+          <div class="section-title">
+            <span>다층 레이어 스택 (Z-Stack)</span>
+            <span id="layer-count-badge" class="control-value" style="font-size: 11px;">0개</span>
+          </div>
+          <ul id="layer-stack-list" class="layer-stack-list">
+            <!-- JavaScript에서 동적으로 채워짐 -->
+          </ul>
+        </div>
+
+        <!-- 6. 템플릿 관리 (Milestone 4: T03-C17 ~ C21) -->
+        <div class="sidebar-section">
+          <div class="section-title">
+            <span>템플릿 관리 (Presets &amp; CRUD)</span>
+            <span id="template-count-badge" class="control-value" style="font-size: 11px;">3개</span>
+          </div>
+          <div class="template-action-row">
+            <button type="button" id="btn-save-template" class="action-btn action-btn-primary" style="flex: 1;" title="현재 3D 씬(레이어, 메모지, 카메라)을 새 템플릿으로 저장">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor">
+                <path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/>
+              </svg>
+              <span>현재 씬 템플릿 저장</span>
+            </button>
+            <button type="button" id="btn-reset-presets" class="action-btn" title="내장 기본 프리셋 3종으로 초기화">
+              <span>기본 복원</span>
+            </button>
+          </div>
+          <ul id="template-list" class="template-list">
+            <!-- JavaScript에서 동적으로 채워짐 -->
+          </ul>
+        </div>
+
+        <!-- 7. JSON 데이터 백업 & 3단계 복원 (Milestone 4: T03-C22 ~ C24) -->
+        <div class="sidebar-section">
+          <div class="section-title">
+            <span>JSON 백업 &amp; 3단계 유효성 복원</span>
+          </div>
+          <input type="file" id="input-json-import" accept=".json,application/json" style="display: none;">
+          <div class="json-io-grid control-group">
+            <button type="button" id="btn-export-json" class="action-btn" title="현재 씬과 템플릿 목록 전체를 JSON 파일로 다운로드">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor">
+                <path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96zM17 13l-5 5-5-5h3V9h4v4h3z"/>
+              </svg>
+              <span>JSON 내보내기</span>
+            </button>
+            <button type="button" id="btn-import-json-trigger" class="action-btn" title="JSON 파일을 불러와 씬과 템플릿 목록 복원">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor">
+                <path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96zM14 13v4h-4v-4H7l5-5 5 5h-3z"/>
+              </svg>
+              <span>JSON 가져오기</span>
+            </button>
+          </div>
+          <div class="json-status-card">
+            * <strong>3단계 유효성 검증</strong>(문법 검사 &rarr; 구조 검사 &rarr; version/layers/text/aspect 필수 필드 검사) 통과 시에만 복원되며, 손상된 JSON은 <strong>기존 씬을 100% 보존</strong>하고 안전하게 거부됩니다.
+          </div>
+        </div>
+
+        <!-- 8. 절차적 찢긴 외곽선 (Torn Edge) -->
+        <div class="sidebar-section">
+          <div class="section-title">
+            <span>전역 찢김 거칠기 (Roughness)</span>
+          </div>
+          <div class="control-group">
+            <div class="control-label-row">
+              <label for="slider-roughness">단면 거칠기 강도</label>
+              <span id="val-roughness" class="control-value">0.075</span>
+            </div>
+            <input type="range" id="slider-roughness" min="0.01" max="0.20" step="0.005" value="0.075">
+          </div>
+          <div class="control-group">
+            <button type="button" id="btn-regen-torn" class="action-btn">
+              <span>샘플 레이어 무작위 찢김 재생성</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- 9. 조명 & 섀도 제어 -->
+        <div class="sidebar-section">
+          <div class="section-title">
+            <span>섀도 박스 조명 (PCFSoft)</span>
+          </div>
+          <div class="control-group">
+            <div class="control-label-row">
+              <label for="slider-light">디렉셔널 라이트 강도</label>
+              <span id="val-light" class="control-value">1.9</span>
+            </div>
+            <input type="range" id="slider-light" min="0.5" max="4.0" step="0.1" value="1.9">
+          </div>
+          <div class="control-group">
+            <button type="button" id="btn-auto-rotate" class="action-btn">
+              <span>360° 자동 회전 감상 토글</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- 10. Milestone 4 기술 스펙 -->
+        <div class="sidebar-section">
+          <div class="section-title">
+            <span>Milestone 4 기술 스펙</span>
+          </div>
+          <table class="checklist-table">
+            <tbody>
+              <tr>
+                <td>템플릿 CRUD</td>
+                <td class="status-ok">생성/불러오기/수정/삭제 100% (T03-C17~C20)</td>
+              </tr>
+              <tr>
+                <td>영속화 보장</td>
+                <td class="status-ok">localStorage 기반 F5 새로고침 복원 (T03-C21)</td>
+              </tr>
+              <tr>
+                <td>JSON 복원</td>
+                <td class="status-ok">정상 파일 씬/템플릿 완벽 복원 (T03-C22)</td>
+              </tr>
+              <tr>
+                <td>문법 손상 방어</td>
+                <td class="status-ok">Stage 1 문법 오류 거부 &amp; 기존 씬 보존 (T03-C23)</td>
+              </tr>
+              <tr>
+                <td>필수 필드 방어</td>
+                <td class="status-ok">Stage 3 version/layers/text/aspect 검증 (T03-C24)</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </aside>
+    </main>
+  </div>
+
+  <!-- 메인 애플리케이션 엔트리포인트 -->
+  <script type="module" src="scripts/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,340 @@
+/**
+ * @file scene-manager.js
+ * @description Three.js 씬, 카메라, 그림자 조명, 백그라운드 매트 보드, OrbitControls 및 뷰 전환 매니저
+ */
+
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+export class SceneManager {
+  /**
+   * @param {HTMLElement} container - WebGL 캔버스가 부착될 DOM 컨테이너
+   * @param {Object} [options]
+   */
+  constructor(container, options = {}) {
+    this.container = container;
+    this.options = Object.assign({
+      boardWidth: 12,
+      boardHeight: 12,
+      boardColor: 0x1b1e23,      // 스튜디오 차콜 매트 보드
+      ambientIntensity: 0.9,
+      dirLightIntensity: 1.9,
+      autoAnimateCamera: true
+    }, options);
+
+    this.layers = [];             // 씬 내에 적재된 종이 조각 메쉬 목록
+    this.animatingCamera = false;
+    this.cameraAnim = null;
+
+    this._initScene();
+    this._initLights();
+    this._initMatteBoard();
+    this._initControls();
+    this._initResizeHandler();
+
+    // 렌더 루프 가동
+    this._animate = this._animate.bind(this);
+    this.rafId = requestAnimationFrame(this._animate);
+  }
+
+  /**
+   * 씬, 카메라, WebGL 렌더러 초기화
+   * @private
+   */
+  _initScene() {
+    this.scene = new THREE.Scene();
+    this.scene.background = new THREE.Color(0x131518);
+
+    const width = this.container.clientWidth || window.innerWidth;
+    const height = this.container.clientHeight || window.innerHeight;
+
+    // 시야각 45도 원근 투영 카메라
+    this.camera = new THREE.PerspectiveCamera(45, width / height, 0.1, 100);
+    this.defaultCameraPos = new THREE.Vector3(0, 0, 8.2);
+    this.defaultTarget = new THREE.Vector3(0, 0, 0);
+    this.camera.position.copy(this.defaultCameraPos);
+    this.camera.lookAt(this.defaultTarget);
+
+    // 고해상도 안티앨리어싱 및 섀도 맵 렌더러
+    this.renderer = new THREE.WebGLRenderer({
+      antialias: true,
+      preserveDrawingBuffer: true, // Milestone 3 고해상도 PNG 캡처를 위한 버퍼 보존
+      alpha: false,
+      powerPreference: 'high-performance'
+    });
+
+    this.renderer.setSize(width, height);
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+
+    // PCFSoftShadowMap 기반 부드러운 다단 그림자 연산 활성화
+    this.renderer.shadowMap.enabled = true;
+    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+
+    // sRGB 색공간 및 톤 매핑
+    this.renderer.outputColorSpace = THREE.SRGBColorSpace;
+    this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    this.renderer.toneMappingExposure = 1.05;
+
+    this.container.appendChild(this.renderer.domElement);
+  }
+
+  /**
+   * 섀도 박스 조명 구성 (키 라이트 + 은은한 환경광 + 림 필라이트)
+   * @private
+   */
+  _initLights() {
+    // 1. 암부 디테일을 살리는 은은한 앰비언트 라이트
+    this.ambientLight = new THREE.AmbientLight(0xffffff, this.options.ambientIntensity);
+    this.scene.add(this.ambientLight);
+
+    // 2. 비스듬한 상단에서 종이 찢김 단면에 극적 그림자를 드리우는 메인 디렉셔널 라이트
+    this.dirLight = new THREE.DirectionalLight(0xfff6ea, this.options.dirLightIntensity);
+    this.dirLight.position.set(4.5, 7.5, 9.0);
+    this.dirLight.castShadow = true;
+
+    // 고해상도 그림자 맵 설정 (2048x2048)
+    this.dirLight.shadow.mapSize.width = 2048;
+    this.dirLight.shadow.mapSize.height = 2048;
+    this.dirLight.shadow.camera.near = 0.5;
+    this.dirLight.shadow.camera.far = 28.0;
+
+    // 그림자 투영 범위 최적화 (뷰포트 종이 영역 집중)
+    const d = 5.5;
+    this.dirLight.shadow.camera.left = -d;
+    this.dirLight.shadow.camera.right = d;
+    this.dirLight.shadow.camera.top = d;
+    this.dirLight.shadow.camera.bottom = -d;
+
+    // 섀도 아티팩트 및 여드름(Shadow Acne) 방지 바이어스
+    this.dirLight.shadow.bias = -0.0003;
+    this.dirLight.shadow.normalBias = 0.02;
+
+    this.scene.add(this.dirLight);
+
+    // 3. 반대편에서 은은하게 그림자 영역을 밝혀주는 보조 필라이트
+    this.fillLight = new THREE.DirectionalLight(0xb0c4de, 0.4);
+    this.fillLight.position.set(-5.0, -4.0, 5.0);
+    this.fillLight.castShadow = false;
+    this.scene.add(this.fillLight);
+  }
+
+  /**
+   * 하위 종이 조각들의 그림자를 받아내는 백그라운드 매트 보드
+   * @private
+   */
+  _initMatteBoard() {
+    const boardGeo = new THREE.PlaneGeometry(this.options.boardWidth, this.options.boardHeight);
+    const boardMat = new THREE.MeshStandardMaterial({
+      color: this.options.boardColor,
+      roughness: 0.92,
+      metalness: 0.03,
+      side: THREE.FrontSide
+    });
+
+    this.boardMesh = new THREE.Mesh(boardGeo, boardMat);
+    // 종이 레이어보다 약간 뒤(Z = -0.05)에 배치하여 그림자를 확실하게 수신
+    this.boardMesh.position.set(0, 0, -0.05);
+    this.boardMesh.receiveShadow = true;
+    this.boardMesh.userData = { isBoard: true };
+
+    this.scene.add(this.boardMesh);
+  }
+
+  /**
+   * 마우스 좌클릭 360도 궤도 회전, 우클릭 패닝, 휠 줌 OrbitControls
+   * @private
+   */
+  _initControls() {
+    this.controls = new OrbitControls(this.camera, this.renderer.domElement);
+    this.controls.enableDamping = true;
+    this.controls.dampingFactor = 0.06;
+    this.controls.screenSpacePanning = true;
+
+    // 조작 반경 및 각도 제한
+    this.controls.minDistance = 2.0;
+    this.controls.maxDistance = 20.0;
+    this.controls.maxPolarAngle = Math.PI * 0.58; // 매트 보드 뒷면 관통 방지
+
+    // 마우스 버튼 매핑 (좌클릭: 회전, 우클릭: 패닝, 휠: 줌)
+    this.controls.mouseButtons = {
+      LEFT: THREE.MOUSE.ROTATE,
+      MIDDLE: THREE.MOUSE.DOLLY,
+      RIGHT: THREE.MOUSE.PAN
+    };
+  }
+
+  /**
+   * 반응형 리사이즈 감지 핸들러
+   * @private
+   */
+  _initResizeHandler() {
+    this._onResize = () => {
+      if (!this.container) return;
+      const width = this.container.clientWidth;
+      const height = this.container.clientHeight;
+      if (width === 0 || height === 0) return;
+
+      this.camera.aspect = width / height;
+      this.camera.updateProjectionMatrix();
+      this.renderer.setSize(width, height);
+    };
+
+    window.addEventListener('resize', this._onResize);
+  }
+
+  /**
+   * 렌더 루프 (requestAnimationFrame)
+   * @private
+   */
+  _animate() {
+    this.rafId = requestAnimationFrame(this._animate);
+
+    // 카메라 퀵앵글 보간 이동 처리
+    if (this.animatingCamera && this.cameraAnim) {
+      const now = performance.now();
+      const progress = Math.min(1.0, (now - this.cameraAnim.startTime) / this.cameraAnim.duration);
+      // Smoothstep 이징
+      const t = progress * progress * (3 - 2 * progress);
+
+      this.camera.position.lerpVectors(this.cameraAnim.startPos, this.cameraAnim.endPos, t);
+      this.controls.target.lerpVectors(this.cameraAnim.startTarget, this.cameraAnim.endTarget, t);
+
+      if (progress >= 1.0) {
+        this.animatingCamera = false;
+        this.cameraAnim = null;
+      }
+    }
+
+    this.controls.update();
+    this.renderer.render(this.scene, this.camera);
+
+    if (this.onFrameCallback) {
+      this.onFrameCallback(this);
+    }
+  }
+
+  /**
+   * 3D 카메라 앵글 퀵 전환 (정면, 대각선, 측면, 리셋)
+   * 부드러운 시점 보간 애니메이션을 적용합니다.
+   *
+   * @param {'front'|'diagonal'|'side'|'reset'} viewType
+   * @param {number} [durationMs=600]
+   */
+  setCameraView(viewType, durationMs = 600) {
+    const targetPos = new THREE.Vector3();
+    const targetCenter = new THREE.Vector3(0, 0, 0);
+
+    switch (viewType) {
+      case 'front':
+        targetPos.set(0, 0, 8.2);
+        break;
+      case 'diagonal':
+        // 입체적인 종이 두께와 다층 그림자가 가장 아름답게 보이는 대각선 앵글
+        targetPos.set(4.2, -3.8, 6.0);
+        break;
+      case 'side':
+        // 찢긴 단면과 Z-Stack 높이 단차가 극적으로 부각되는 측면 프로필 앵글
+        targetPos.set(7.5, -0.3, 2.6);
+        break;
+      case 'reset':
+      default:
+        targetPos.copy(this.defaultCameraPos);
+        break;
+    }
+
+    this.animatingCamera = true;
+    this.cameraAnim = {
+      startTime: performance.now(),
+      duration: durationMs,
+      startPos: this.camera.position.clone(),
+      endPos: targetPos,
+      startTarget: this.controls.target.clone(),
+      endTarget: targetCenter
+    };
+  }
+
+  /**
+   * 종이 조각 메쉬를 씬에 추가
+   * @param {THREE.Mesh} mesh
+   * @param {number} [zHeight] - Z축 적재 높이
+   */
+  addPaperMesh(mesh, zHeight = null) {
+    if (zHeight !== null) {
+      mesh.position.z = zHeight;
+      if (mesh.userData) {
+        mesh.userData.zIndex = zHeight;
+      }
+    }
+    this.layers.push(mesh);
+    this.scene.add(mesh);
+    return mesh;
+  }
+
+  /**
+   * 종이 조각 메쉬 제거
+   * @param {THREE.Mesh} mesh
+   */
+  removePaperMesh(mesh) {
+    const idx = this.layers.indexOf(mesh);
+    if (idx !== -1) {
+      this.layers.splice(idx, 1);
+    }
+    this.scene.remove(mesh);
+    if (mesh.geometry) mesh.geometry.dispose();
+    if (mesh.material) {
+      if (Array.isArray(mesh.material)) {
+        mesh.material.forEach(m => m.dispose());
+      } else {
+        mesh.material.dispose();
+      }
+    }
+  }
+
+  /**
+   * 모든 종이 레이어 일괄 정리 (보드 및 조명 유지)
+   */
+  clearPaperLayers() {
+    const toRemove = [...this.layers];
+    toRemove.forEach(mesh => this.removePaperMesh(mesh));
+    this.layers = [];
+  }
+
+  /**
+   * 현재 카메라의 좌표 및 타깃 반환
+   * @returns {{position: {x: number, y: number, z: number}, target: {x: number, y: number, z: number}, distance: number}}
+   */
+  getCameraInfo() {
+    return {
+      position: {
+        x: Number(this.camera.position.x.toFixed(2)),
+        y: Number(this.camera.position.y.toFixed(2)),
+        z: Number(this.camera.position.z.toFixed(2))
+      },
+      target: {
+        x: Number(this.controls.target.x.toFixed(2)),
+        y: Number(this.controls.target.y.toFixed(2)),
+        z: Number(this.controls.target.z.toFixed(2))
+      },
+      distance: Number(this.camera.position.distanceTo(this.controls.target).toFixed(2))
+    };
+  }
+
+  /**
+   * 자원 해제
+   */
+  dispose() {
+    if (this.rafId) cancelAnimationFrame(this.rafId);
+    window.removeEventListener('resize', this._onResize);
+    this.clearPaperLayers();
+    if (this.boardMesh) {
+      this.boardMesh.geometry.dispose();
+      this.boardMesh.material.dispose();
+      this.scene.remove(this.boardMesh);
+    }
+    this.controls.dispose();
+    this.renderer.dispose();
+    if (this.renderer.domElement && this.renderer.domElement.parentNode) {
+      this.renderer.domElement.parentNode.removeChild(this.renderer.domElement);
+    }
+  }
+}
