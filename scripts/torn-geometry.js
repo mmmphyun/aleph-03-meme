@@ -251,10 +251,128 @@ export function createTornCircleShape(radius = 1.2, options = {}) {
 }
 
 /**
+ * 사용자가 지정한 임의의 다각형(Lasso 외곽선)을 기반으로 자연스러운 찢긴 종이 2D Shape 생성
+ * 각 선분(세그먼트)마다 코너 연결성을 유지하면서 다중 주파수 사인파 및 2D FBM 노이즈를 수직 변위로 가산합니다.
+ *
+ * @param {Array<{x: number, y: number}>} points - 다각형 꼭짓점 좌표 배열
+ * @param {Object} [options] - 알고리즘 파라미터
+ * @param {number} [options.roughness=0.06] - 찢김 거칠기 강도
+ * @param {number} [options.detail=20] - 각 변당 기본 세그먼트 분할 수
+ * @param {number} [options.seed=99] - 노이즈 시드
+ * @param {boolean} [options.closed=true] - 폐곡선 여부 (시작점과 끝점 자동 연결)
+ * @returns {THREE.Shape}
+ */
+export function createTornPolygonShape(points = [], options = {}) {
+  const {
+    roughness = 0.06,
+    detail = 20,
+    seed = 99,
+    closed = true
+  } = options;
+
+  const shape = new THREE.Shape();
+  if (!Array.isArray(points) || points.length < 3) {
+    console.warn('[createTornPolygonShape] 다각형을 형성하기 위해 최소 3개 이상의 점이 필요합니다.');
+    // 폴백: 기본 삼각형
+    shape.moveTo(0, 0);
+    shape.lineTo(1, 0);
+    shape.lineTo(0.5, 1);
+    shape.closePath();
+    return shape;
+  }
+
+  // 꼭짓점 목록 복사 및 정제 (마지막 점이 첫 점과 거의 일치하는 경우 중복 제거)
+  const pts = points.map(p => ({ x: Number(p.x) || 0, y: Number(p.y) || 0 }));
+  const last = pts[pts.length - 1];
+  const first = pts[0];
+  const distSq = (last.x - first.x) ** 2 + (last.y - first.y) ** 2;
+  if (distSq < 1e-8 && pts.length > 3) {
+    pts.pop();
+  }
+
+  const n = pts.length;
+  const noise = new PseudoNoise2D(seed);
+  let isFirstPoint = true;
+
+  // 세그먼트별 순회 (0 -> 1, 1 -> 2, ..., n-1 -> 0)
+  for (let segIdx = 0; segIdx < n; segIdx++) {
+    const nextIdx = (segIdx + 1) % n;
+    if (!closed && segIdx === n - 1) break;
+
+    const pStart = pts[segIdx];
+    const pEnd = pts[nextIdx];
+
+    const dx = pEnd.x - pStart.x;
+    const dy = pEnd.y - pStart.y;
+    const segLen = Math.hypot(dx, dy);
+
+    // 세그먼트 길이가 거의 0인 축퇴 세그먼트 처리
+    if (segLen < 1e-6) {
+      if (isFirstPoint) {
+        shape.moveTo(pStart.x, pStart.y);
+        isFirstPoint = false;
+      }
+      continue;
+    }
+
+    // 선분의 단위 방향 벡터 및 외곽 수직 법선 벡터 (-dy/L, dx/L)
+    const nx = -dy / segLen;
+    const ny = dx / segLen;
+
+    // 세그먼트 분할 스텝 수 산정
+    const steps = Math.max(4, Math.round(detail));
+
+    for (let j = 0; j <= steps; j++) {
+      // 이전 세그먼트 끝점과 현재 세그먼트 시작점 중복 방지
+      if (j === 0 && !isFirstPoint) continue;
+
+      const t = j / steps;
+      const baseX = pStart.x + t * dx;
+      const baseY = pStart.y + t * dy;
+
+      let px = baseX;
+      let py = baseY;
+
+      // 양 끝점에서는 다각형 원래 꼭짓점 위치로 수렴 (연결성 보장)
+      if (j > 0 && j < steps) {
+        // 엔벨로프 커브 (0 -> 1 -> 0)
+        const envelope = Math.pow(Math.sin(Math.PI * t), 0.45);
+
+        // 다중 주파수 사인파 (대/중/소 요철 복합)
+        const sineWave =
+          0.55 * Math.sin(t * Math.PI * 4.0 + segIdx * 1.7) +
+          0.30 * Math.sin(t * Math.PI * 11.0 + segIdx * 3.1) +
+          0.15 * Math.sin(t * Math.PI * 23.0 + segIdx * 5.3);
+
+        // 2D FBM 고주파 섬유 노이즈
+        const noiseSample = noise.fbm(t * 8.0 + segIdx * 13.7, segIdx * 7.1, 4);
+
+        // 결합 변위 적용
+        const displacement = (sineWave * 0.45 + noiseSample * 0.55) * roughness * envelope;
+
+        px += nx * displacement;
+        py += ny * displacement;
+      }
+
+      if (isFirstPoint) {
+        shape.moveTo(px, py);
+        isFirstPoint = false;
+      } else {
+        shape.lineTo(px, py);
+      }
+    }
+  }
+
+  shape.closePath();
+  return shape;
+}
+
+/**
  * 2D Shape를 실제 종이 두께와 베벨을 갖는 3D ExtrudeGeometry로 변환
  *
  * @param {THREE.Shape} shape - 2D 외곽선 형상
  * @param {Object} [customOptions] - THREE.ExtrudeGeometry 파라미터 오버라이드
+ * @param {Object} [customOptions.uvBounds] - 정규화 UV 계산용 명시적 바운딩 박스 ({ minX, maxX, minY, maxY })
  * @returns {THREE.ExtrudeGeometry}
  */
 export function createTornPaperGeometry(shape, customOptions = {}) {
@@ -277,7 +395,7 @@ export function createTornPaperGeometry(shape, customOptions = {}) {
   geometry.computeVertexNormals();
 
   // 상단 면(Front Face) 텍스처 매핑을 위한 정밀 UV 정규화 좌표 생성
-  _generateNormalizedUVs(geometry);
+  _generateNormalizedUVs(geometry, customOptions.uvBounds);
 
   return geometry;
 }
@@ -286,13 +404,19 @@ export function createTornPaperGeometry(shape, customOptions = {}) {
  * ExtrudeGeometry의 Z축 전면 버텍스에 대해 [0, 1] 범위의 평면 정규화 UV 좌표를 부여합니다.
  * @private
  * @param {THREE.ExtrudeGeometry} geometry
+ * @param {Object} [explicitBounds] - 명시적 바운딩 좌표 ({ minX, maxX, minY, maxY })
  */
-function _generateNormalizedUVs(geometry) {
+function _generateNormalizedUVs(geometry, explicitBounds = null) {
   const box = geometry.boundingBox;
   if (!box) return;
 
-  const width = box.max.x - box.min.x;
-  const height = box.max.y - box.min.y;
+  const minX = explicitBounds && explicitBounds.minX !== undefined ? explicitBounds.minX : box.min.x;
+  const maxX = explicitBounds && explicitBounds.maxX !== undefined ? explicitBounds.maxX : box.max.x;
+  const minY = explicitBounds && explicitBounds.minY !== undefined ? explicitBounds.minY : box.min.y;
+  const maxY = explicitBounds && explicitBounds.maxY !== undefined ? explicitBounds.maxY : box.max.y;
+
+  const width = maxX - minX;
+  const height = maxY - minY;
   if (width <= 0 || height <= 0) return;
 
   const uvAttr = geometry.attributes.uv;
@@ -303,8 +427,8 @@ function _generateNormalizedUVs(geometry) {
   for (let i = 0; i < posAttr.count; i++) {
     const x = posAttr.getX(i);
     const y = posAttr.getY(i);
-    const u = (x - box.min.x) / width;
-    const v = (y - box.min.y) / height;
+    const u = (x - minX) / width;
+    const v = (y - minY) / height;
     uvAttr.setXY(i, u, v);
   }
   uvAttr.needsUpdate = true;
@@ -313,8 +437,8 @@ function _generateNormalizedUVs(geometry) {
 /**
  * 종이 질감의 기본 머티리얼을 적용한 찢긴 종이 메쉬 생성 팩토리
  *
- * @param {string} shapeType - 'rectangle' 또는 'circle'
- * @param {Object} shapeParams - 형태 파라미터 (width, height, radius, roughness, seed 등)
+ * @param {string} shapeType - 'rectangle', 'circle', 또는 'polygon'
+ * @param {Object} shapeParams - 형태 파라미터 (width, height, radius, points, roughness, seed 등)
  * @param {Object} [materialOptions] - THREE.MeshStandardMaterial 옵션 (color, roughness 등)
  * @returns {THREE.Mesh}
  */
@@ -322,6 +446,8 @@ export function createTornPaperMesh(shapeType = 'rectangle', shapeParams = {}, m
   let shape;
   if (shapeType === 'circle') {
     shape = createTornCircleShape(shapeParams.radius || 1.2, shapeParams);
+  } else if (shapeType === 'polygon') {
+    shape = createTornPolygonShape(shapeParams.points || [], shapeParams);
   } else {
     shape = createTornRectangleShape(shapeParams.width || 3.0, shapeParams.height || 2.0, shapeParams);
   }

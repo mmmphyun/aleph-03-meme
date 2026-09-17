@@ -135,9 +135,111 @@ export class SceneManager {
     // 종이 레이어보다 약간 뒤(Z = -0.05)에 배치하여 그림자를 확실하게 수신
     this.boardMesh.position.set(0, 0, -0.05);
     this.boardMesh.receiveShadow = true;
-    this.boardMesh.userData = { isBoard: true };
+    this.boardMesh.userData = { isBoard: true, isBackdrop: true };
+
+    // backdropMesh alias 제공 (터널북/팝업북 배경판 인터페이스 호환)
+    this.backdropMesh = this.boardMesh;
 
     this.scene.add(this.boardMesh);
+  }
+
+  /**
+   * 배경 매트 보드에 사용자 이미지를 전체 배경 텍스처로 입히고 종횡비에 맞게 크기 자동 조정
+   * 조명 및 그림자 캐시를 갱신하여 팝업 조각과의 그림자 대비를 유지합니다.
+   *
+   * @param {HTMLImageElement|HTMLCanvasElement|ImageBitmap|THREE.Texture} imageElement - 업로드된 이미지 객체 또는 텍스처
+   * @param {Object} [options] - 옵션 파라미터
+   * @param {number} [options.baseWidth=6.0] - 기본 가로 크기 (기본값: 6.0)
+   * @param {number} [options.zPosition=-0.05] - 배경판 Z 위치 (기본값: -0.05)
+   * @param {number} [options.roughness=0.88] - 배경 표면 거칠기
+   * @param {number} [options.metalness=0.02] - 금속성
+   * @returns {THREE.Mesh} backdropMesh 인스턴스
+   */
+  setBackdropImage(imageElement, options = {}) {
+    if (!imageElement) {
+      console.warn('[SceneManager] setBackdropImage: 유효한 imageElement가 전달되지 않았습니다.');
+      return this.backdropMesh || this.boardMesh;
+    }
+
+    const {
+      baseWidth = 6.0,
+      zPosition = -0.05,
+      roughness = 0.88,
+      metalness = 0.02
+    } = options;
+
+    // 이미지 원본 크기 및 종횡비(세로/가로) 계산
+    let imgWidth = 1;
+    let imgHeight = 1;
+
+    if (imageElement instanceof THREE.Texture && imageElement.image) {
+      const src = imageElement.image;
+      imgWidth = src.naturalWidth || src.videoWidth || src.width || 1;
+      imgHeight = src.naturalHeight || src.videoHeight || src.height || 1;
+    } else {
+      imgWidth = imageElement.naturalWidth || imageElement.videoWidth || imageElement.width || 1;
+      imgHeight = imageElement.naturalHeight || imageElement.videoHeight || imageElement.height || 1;
+    }
+
+    const aspectRatio = imgHeight / imgWidth;
+    const targetWidth = baseWidth;
+    const targetHeight = baseWidth * aspectRatio;
+
+    const targetMesh = this.backdropMesh || this.boardMesh;
+
+    // 1. 기존 지오메트리 해제 및 새 종횡비 PlaneGeometry 교체
+    if (targetMesh.geometry) {
+      targetMesh.geometry.dispose();
+    }
+    targetMesh.geometry = new THREE.PlaneGeometry(targetWidth, targetHeight);
+    targetMesh.position.set(0, 0, zPosition);
+    targetMesh.receiveShadow = true;
+
+    // 2. 텍스처 생성 및 색공간 / 필터링 설정
+    let texture;
+    if (imageElement instanceof THREE.Texture) {
+      texture = imageElement;
+    } else if (typeof HTMLCanvasElement !== 'undefined' && imageElement instanceof HTMLCanvasElement) {
+      texture = new THREE.CanvasTexture(imageElement);
+    } else {
+      texture = new THREE.Texture(imageElement);
+    }
+    texture.colorSpace = THREE.SRGBColorSpace;
+    texture.minFilter = THREE.LinearFilter;
+    texture.magFilter = THREE.LinearFilter;
+    texture.generateMipmaps = false;
+    texture.needsUpdate = true;
+
+    // 3. 기존 텍스처 해제 및 머티리얼 텍스처 매핑 갱신
+    if (targetMesh.material.map && targetMesh.material.map !== texture) {
+      targetMesh.material.map.dispose();
+    }
+    targetMesh.material.map = texture;
+    targetMesh.material.color.set(0xffffff); // 원본 이미지 색감 보존
+    targetMesh.material.roughness = roughness;
+    targetMesh.material.metalness = metalness;
+    targetMesh.material.needsUpdate = true;
+
+    // 4. 그림자 투영 범위 및 바이어스/강도 유지 보장
+    if (this.dirLight && this.dirLight.shadow) {
+      const halfDim = Math.max(targetWidth, targetHeight) * 0.75;
+      const d = Math.max(5.5, halfDim);
+      this.dirLight.shadow.camera.left = -d;
+      this.dirLight.shadow.camera.right = d;
+      this.dirLight.shadow.camera.top = d;
+      this.dirLight.shadow.camera.bottom = -d;
+
+      // 팝업 조각과 배경판 사이의 선명한 그림자를 위한 shadow bias 및 intensity 유지
+      this.dirLight.shadow.bias = -0.0003;
+      this.dirLight.shadow.normalBias = 0.02;
+      this.dirLight.intensity = this.options.dirLightIntensity;
+      this.dirLight.shadow.camera.updateProjectionMatrix();
+    }
+
+    this.backdropMesh = targetMesh;
+    this.boardMesh = targetMesh;
+
+    return targetMesh;
   }
 
   /**
@@ -326,10 +428,14 @@ export class SceneManager {
     if (this.rafId) cancelAnimationFrame(this.rafId);
     window.removeEventListener('resize', this._onResize);
     this.clearPaperLayers();
-    if (this.boardMesh) {
-      this.boardMesh.geometry.dispose();
-      this.boardMesh.material.dispose();
-      this.scene.remove(this.boardMesh);
+    const bMesh = this.backdropMesh || this.boardMesh;
+    if (bMesh) {
+      if (bMesh.geometry) bMesh.geometry.dispose();
+      if (bMesh.material) {
+        if (bMesh.material.map) bMesh.material.map.dispose();
+        bMesh.material.dispose();
+      }
+      this.scene.remove(bMesh);
     }
     this.controls.dispose();
     this.renderer.dispose();
