@@ -471,13 +471,56 @@ export function createTornPaperMesh(shapeType = 'rectangle', shapeParams = {}, m
   mesh.castShadow = true;
   mesh.receiveShadow = true;
 
+  const hasWhiteBorder = shapeParams.hasWhiteBorder !== false;
+
   // 메타데이터 부착 (이후 레이어 관리 및 크롭 도구 연동에 활용)
   mesh.userData = {
     isTornPaper: true,
     shapeType: shapeType,
     shapeParams: shapeParams,
+    hasWhiteBorder: hasWhiteBorder,
     zIndex: 0
   };
+
+  // 실제 잡지나 인쇄 사진을 손으로 찢었을 때 표면 잉크 아래의 흰색 종이 심지(White Core Pulp)가 드러나는 물리적 효과 재현
+  // 베이스로 흰색/아이보리(0xf7f5f0, roughness: 0.95) 무광 종이 메쉬(두께 0.035, 스케일 1.04)를 하단(Z - 0.002)에 배치
+  if (hasWhiteBorder) {
+    const borderScale = typeof shapeParams.borderScale === 'number' ? shapeParams.borderScale : 1.04;
+    const baseExtrudeOpts = Object.assign(
+      {
+        depth: 0.035,
+        bevelEnabled: true,
+        bevelThickness: 0.006,
+        bevelSize: 0.006,
+        bevelSegments: 2,
+        steps: 1
+      },
+      shapeParams.extrudeOptions || {}
+    );
+    // 기본 두께 0.035 보장
+    if (!shapeParams.extrudeOptions?.depth) {
+      baseExtrudeOpts.depth = 0.035;
+    }
+
+    const baseGeometry = createTornPaperGeometry(shape, baseExtrudeOpts);
+    const baseMaterial = new THREE.MeshStandardMaterial({
+      color: 0xf7f5f0,
+      roughness: 0.95,
+      metalness: 0.02,
+      side: THREE.FrontSide
+    });
+
+    const baseMesh = new THREE.Mesh(baseGeometry, baseMaterial);
+    baseMesh.castShadow = true;
+    baseMesh.receiveShadow = true;
+    baseMesh.scale.set(borderScale, borderScale, 1.0);
+    // 전면 사진 텍스처 메쉬 대비 Z - 0.002 후면에 위치 (전면 메쉬가 Z + 0.002에 올라앉는 구조)
+    baseMesh.position.set(0, 0, -0.002);
+    baseMesh.userData = { isTornWhiteBorder: true };
+
+    mesh.add(baseMesh);
+    mesh.whiteBorderMesh = baseMesh;
+  }
 
   return mesh;
 }

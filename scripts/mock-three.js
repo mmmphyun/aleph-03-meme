@@ -228,6 +228,36 @@ export class Mesh {
     this.castShadow = false;
     this.receiveShadow = false;
     this.userData = {};
+    this.children = [];
+    this.isMesh = true;
+  }
+  add(obj) {
+    this.children.push(obj);
+    obj.parent = this;
+    return this;
+  }
+  remove(obj) {
+    const idx = this.children.indexOf(obj);
+    if (idx !== -1) {
+      this.children.splice(idx, 1);
+      obj.parent = null;
+    }
+    return this;
+  }
+  traverse(cb) {
+    cb(this);
+    for (const child of this.children) {
+      if (child.traverse) child.traverse(cb);
+      else cb(child);
+    }
+  }
+}
+
+export class Group extends Mesh {
+  constructor() {
+    super(null, null);
+    this.isGroup = true;
+    this.isMesh = false;
   }
 }
 

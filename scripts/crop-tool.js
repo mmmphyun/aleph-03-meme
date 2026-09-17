@@ -288,6 +288,9 @@ export class CropTool {
       return;
     }
 
+    if (this.currentImage !== image) {
+      this.currentPunchedCanvas = null;
+    }
     this.currentImage = image;
     this.isOpen = true;
     this.modalEl.classList.add('active');
@@ -727,10 +730,50 @@ export class CropTool {
     const radius = 1.35;
     const seed = Math.floor(Math.random() * 100000);
 
+    // 6. 원본 사진 2D Canvas 복제 후 잘라낸 영역을 destination-out으로 지워내어 구멍(Hole/Punchout) 뚫린 배경 텍스처 캔버스 생성
+    const punchedBgCanvas = document.createElement('canvas');
+    punchedBgCanvas.width = origW;
+    punchedBgCanvas.height = origH;
+    const bgCtx = punchedBgCanvas.getContext('2d');
+
+    // 이전 크롭 내역 누적 지원 또는 원본 이미지 복제
+    if (this.currentPunchedCanvas && this.currentPunchedImage === this.currentImage) {
+      bgCtx.drawImage(this.currentPunchedCanvas, 0, 0);
+    } else {
+      bgCtx.drawImage(this.currentImage, 0, 0, origW, origH);
+    }
+
+    bgCtx.save();
+    bgCtx.globalCompositeOperation = 'destination-out';
+    bgCtx.beginPath();
+
+    if (this.shapeType === 'polygon' && this.lassoPoints && this.lassoPoints.length >= 3) {
+      bgCtx.moveTo(this.lassoPoints[0].x * origW, this.lassoPoints[0].y * origH);
+      for (let i = 1; i < this.lassoPoints.length; i++) {
+        bgCtx.lineTo(this.lassoPoints[i].x * origW, this.lassoPoints[i].y * origH);
+      }
+      bgCtx.closePath();
+      bgCtx.fill();
+    } else if (this.shapeType === 'circle') {
+      const cx = sx + sw / 2;
+      const cy = sy + sh / 2;
+      const r = Math.min(sw, sh) / 2;
+      bgCtx.arc(cx, cy, r, 0, Math.PI * 2);
+      bgCtx.fill();
+    } else {
+      bgCtx.rect(sx, sy, sw, sh);
+      bgCtx.fill();
+    }
+    bgCtx.restore();
+
+    this.currentPunchedCanvas = punchedBgCanvas;
+    this.currentPunchedImage = this.currentImage;
+
     const result = {
       texture,
       cropCanvas,
       textureCanvas: cropCanvas,
+      punchedBgCanvas,
       shapeType: this.shapeType,
       roughness: this.roughness,
       seed,
@@ -739,6 +782,7 @@ export class CropTool {
       radius: radius,
       aspectRatio: Number(aspect.toFixed(3)),
       points: relativePoints,
+      lassoPoints: this.lassoPoints ? this.lassoPoints.map(pt => ({ x: pt.x, y: pt.y })) : [],
       uvBounds: {
         minX: Number(minX.toFixed(4)),
         minY: Number(minY.toFixed(4)),
@@ -746,7 +790,8 @@ export class CropTool {
         maxY: Number(maxY.toFixed(4))
       },
       centerOffset: centerOffset,
-      cropRect: { sx, sy, sw, sh, origW, origH }
+      cropRect: { sx, sy, sw, sh, origW, origH },
+      sourceImage: this.currentImage
     };
 
     this.close();

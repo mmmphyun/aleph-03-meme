@@ -608,19 +608,92 @@ class PaperStudioApp {
    * @param {Object} cropData
    */
   handleAddCroppedPiece(cropData) {
-    // 1. Z축 높이 (기본 팝업 돌출 깊이 Z = 0.60, 다층 스택 시 오프셋 가산)
-    const popupDepth = 0.60;
-    const zStackHeight = Number((popupDepth + this.layers.length * 0.08).toFixed(2));
+    // 1. 초기 기본 샘플 레이어가 아직 남아있는 경우 일괄 정리하여 독립 2-레이어 터널북 구조로 전환
+    const hasInitSample = this.layers.some(
+      l => l.userData.id === 'layer_init_1' || l.userData.id === 'layer_init_2'
+    );
+    if (hasInitSample) {
+      this.sceneManager.clearPaperLayers();
+      this.layers = [];
+      this.backdropLayerMesh = null;
+    }
 
-    // cropCanvas가 전달되었으나 texture가 없는 경우 THREE.CanvasTexture 자동 생성 (T03-C14)
+    // 2. 크롭 텍스처 준비 (CanvasTexture 생성)
     if (cropData.cropCanvas && !cropData.texture) {
       cropData.texture = new THREE.CanvasTexture(cropData.cropCanvas);
       cropData.texture.colorSpace = THREE.SRGBColorSpace;
       cropData.texture.needsUpdate = true;
     }
 
-    // 2. 찢긴 종이 3D 메쉬 생성
-    let mesh;
+    // 3. 배경판 종횡비 및 3D 크기 산출
+    const origW = cropData.cropRect?.origW || 1;
+    const origH = cropData.cropRect?.origH || 1;
+    const bgWidth = 6.0;
+    const bgHeight = Number((bgWidth * (origH / origW)).toFixed(4));
+
+    // 4. 구멍 뚫린 배경 사진의 독립 3D 메쉬 레이어 (Backdrop Layer, 기본 Z = 0.00) 생성 또는 갱신
+    if (cropData.punchedBgCanvas) {
+      const bgTexture = new THREE.CanvasTexture(cropData.punchedBgCanvas);
+      bgTexture.colorSpace = THREE.SRGBColorSpace;
+      bgTexture.minFilter = THREE.LinearFilter;
+      bgTexture.magFilter = THREE.LinearFilter;
+      bgTexture.generateMipmaps = false;
+      bgTexture.needsUpdate = true;
+
+      if (!this.backdropLayerMesh) {
+        const bgGeo = new THREE.PlaneGeometry(bgWidth, bgHeight);
+        const bgMat = new THREE.MeshStandardMaterial({
+          map: bgTexture,
+          roughness: 0.88,
+          metalness: 0.02,
+          transparent: true,
+          alphaTest: 0.001,
+          side: THREE.FrontSide
+        });
+
+        const bgMesh = new THREE.Mesh(bgGeo, bgMat);
+        bgMesh.position.set(0, 0, 0.00);
+        bgMesh.castShadow = true;
+        bgMesh.receiveShadow = true;
+        bgMesh.userData = {
+          id: 'layer_backdrop',
+          name: '🖼️ 배경 레이어 (오려진 원본)',
+          shapeType: 'rectangle',
+          isBackdropLayer: true,
+          width: bgWidth,
+          height: bgHeight,
+          roughness: 0.88,
+          zIndex: 0.00,
+          textureDataUrl: cropData.punchedBgCanvas.toDataURL('image/png')
+        };
+
+        this.sceneManager.addPaperMesh(bgMesh, 0.00);
+        // layers 목록의 첫 번째(기저 배경 레이어, Z = 0.00)로 등록
+        this.layers.push(bgMesh);
+        this.backdropLayerMesh = bgMesh;
+      } else {
+        if (this.backdropLayerMesh.material.map) {
+          this.backdropLayerMesh.material.map.dispose();
+        }
+        this.backdropLayerMesh.material.map = bgTexture;
+        this.backdropLayerMesh.material.needsUpdate = true;
+        this.backdropLayerMesh.userData.textureDataUrl = cropData.punchedBgCanvas.toDataURL('image/png');
+      }
+
+      // 배경 뒤 액자 내부의 어두운 매트 보드(Z = -0.15) 설정: 구멍 난 곳을 통해 안쪽 깊은 공간이 들여다보이도록 함
+      if (this.sceneManager.boardMesh) {
+        this.sceneManager.boardMesh.position.set(0, 0, -0.15);
+        if (this.sceneManager.boardMesh.material.map) {
+          this.sceneManager.boardMesh.material.map = null;
+        }
+        this.sceneManager.boardMesh.material.color.set(0x14161a);
+        this.sceneManager.boardMesh.material.roughness = 0.95;
+        this.sceneManager.boardMesh.material.needsUpdate = true;
+      }
+    }
+
+    // 5. 팝업 조각 3D 메쉬 생성 (기본 Z = 0.60, 다층 스택 시 오프셋 가산)
+    const popupDepth = 0.60;
     const extrudeOpts = {
       depth: 0.03,
       bevelEnabled: true,
@@ -628,13 +701,6 @@ class PaperStudioApp {
       bevelSize: 0.005
     };
 
-    // 배경판 3D 크기 파라미터 획득 (기본 6.0 및 종횡비)
-    const backdrop = this.sceneManager?.backdropMesh || this.sceneManager?.boardMesh;
-    const bgParams = backdrop?.geometry?.parameters || { width: 6.0, height: 6.0 };
-    const bgWidth = bgParams.width || 6.0;
-    const bgHeight = bgParams.height || 6.0;
-
-    // uvBounds 및 원본 이미지 대비 조각의 3D 월드 크기 산출
     let uvBounds = cropData.uvBounds;
     let pieceW = cropData.width;
     let pieceH = cropData.height;
@@ -644,6 +710,7 @@ class PaperStudioApp {
       pieceH = (uvBounds.maxY - uvBounds.minY) * bgHeight;
     }
 
+    let mesh;
     if (cropData.shapeType === 'polygon' && Array.isArray(cropData.points) && cropData.points.length >= 3) {
       // 바운딩 박스 중심(0, 0) 기준의 로컬 폴리곤 좌표로 정렬
       const localPolygonPoints = cropData.points.map(pt => ({
@@ -658,6 +725,8 @@ class PaperStudioApp {
           roughness: cropData.roughness,
           detail: 20,
           seed: cropData.seed,
+          hasWhiteBorder: true,
+          borderScale: 1.04,
           extrudeOptions: extrudeOpts
         },
         {
@@ -675,6 +744,8 @@ class PaperStudioApp {
           roughness: cropData.roughness,
           segments: 150,
           seed: cropData.seed,
+          hasWhiteBorder: true,
+          borderScale: 1.04,
           extrudeOptions: extrudeOpts
         },
         {
@@ -692,6 +763,8 @@ class PaperStudioApp {
           roughness: cropData.roughness,
           detail: 70,
           seed: cropData.seed,
+          hasWhiteBorder: true,
+          borderScale: 1.04,
           extrudeOptions: extrudeOpts
         },
         {
@@ -702,13 +775,12 @@ class PaperStudioApp {
       );
     }
 
-    // 3. 3D X, Y 위치를 원본 배경 사진 상의 위치와 정확히 일치하도록 배치
+    // 6. 3D X, Y 위치를 원본 배경 사진 상의 위치와 정확히 1:1 일치하도록 배치
     let posX = 0;
     let posY = 0;
 
     if (cropData.centerOffset) {
       posX = Number((cropData.centerOffset.x * bgWidth).toFixed(3));
-      // Three.js Y축은 위가 양수이므로 부호 반전
       posY = Number((-cropData.centerOffset.y * bgHeight).toFixed(3));
     } else if (uvBounds) {
       const uMid = (uvBounds.minX + uvBounds.maxX) / 2;
@@ -717,23 +789,18 @@ class PaperStudioApp {
       posY = Number(((0.5 - vMid) * bgHeight).toFixed(3));
     }
 
-    mesh.position.set(posX, posY, zStackHeight);
+    mesh.position.set(posX, posY, popupDepth);
 
-    // 4. 메타데이터 부착
-    const layerNum = this.layers.length + 1;
-    let typeTitle = '사각 찢긴 종이';
-    if (cropData.shapeType === 'polygon') {
-      typeTitle = '올가미 팝업 조각';
-    } else if (cropData.shapeType === 'circle') {
-      typeTitle = '원형 스티커';
-    }
+    // 7. 메타데이터 부착
+    const popupCount = this.layers.filter(l => !l.userData.isBackdropLayer).length + 1;
+    const popupTitle = popupCount === 1 ? '✂️ 팝업 조각 (인물/물체)' : `✂️ 팝업 조각 #${popupCount}`;
 
     const textureDataUrl = cropData.cropCanvas ? cropData.cropCanvas.toDataURL('image/png') : null;
     mesh.userData = {
       id: `layer_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
-      name: `${typeTitle} #${layerNum}`,
+      name: popupTitle,
       shapeType: cropData.shapeType,
-      zIndex: zStackHeight,
+      zIndex: popupDepth,
       cropData: cropData,
       textureDataUrl: textureDataUrl,
       width: pieceW,
@@ -744,15 +811,15 @@ class PaperStudioApp {
       color: null
     };
 
-    // 5. 3D 씬 매니저에 추가
-    this.sceneManager.addPaperMesh(mesh, zStackHeight);
+    // 8. 3D 씬 매니저에 추가 및 layers 등록
+    this.sceneManager.addPaperMesh(mesh, popupDepth);
     this.layers.push(mesh);
 
-    // 6. 새로 추가된 조각을 현재 선택 레이어로 지정
+    // 9. 새로 추가된 팝업 조각을 현재 선택 레이어로 지정 및 UI 동기화
     this.selectLayer(mesh);
     this.updateLayerListUI();
 
-    this.showToast(`신규 팝업 조각 추가 완료 (Z = ${zStackHeight})`, 'success');
+    this.showToast(`터널북 팝업 조각 생성 완료 (Z = ${popupDepth.toFixed(2)})`, 'success');
   }
 
   /**
@@ -904,15 +971,12 @@ class PaperStudioApp {
     const idx = this.layers.indexOf(mesh);
     if (idx === -1) return;
 
+    if (mesh === this.backdropLayerMesh) {
+      this.backdropLayerMesh = null;
+    }
+
     this.sceneManager.removePaperMesh(mesh);
     this.layers.splice(idx, 1);
-
-    // Z-Stack 재정렬 (빈 간극 제거)
-    this.layers.forEach((layer, i) => {
-      const newZ = Number((i * 0.15).toFixed(2));
-      layer.position.z = newZ;
-      layer.userData.zIndex = newZ;
-    });
 
     if (this.layers.length > 0) {
       this.selectLayer(this.layers[Math.max(0, idx - 1)]);
@@ -987,8 +1051,13 @@ class PaperStudioApp {
         li.classList.add('selected');
       }
 
+      const isBackdrop = mesh.userData.isBackdropLayer;
       const isCircle = mesh.userData.shapeType === 'circle';
-      const shapeIcon = isCircle ? '●' : '■';
+      const shapeIcon = isBackdrop
+        ? '🖼️'
+        : (mesh.userData.name && mesh.userData.name.includes('✂️')
+          ? '✂️'
+          : (isCircle ? '●' : '■'));
 
       li.innerHTML = `
         <div class="layer-badge">${shapeIcon}</div>
@@ -1055,6 +1124,7 @@ class PaperStudioApp {
         id: ud.id || `layer_${Date.now()}_${index}`,
         name: ud.name || `종이 조각 #${index + 1}`,
         shapeType: ud.shapeType || 'rectangle',
+        isBackdropLayer: Boolean(ud.isBackdropLayer),
         width: ud.cropData?.width || ud.width || 4.0,
         height: ud.cropData?.height || ud.height || 2.8,
         radius: ud.cropData?.radius || ud.radius || 1.25,
@@ -1135,7 +1205,20 @@ class PaperStudioApp {
     }
 
     let mesh;
-    if (layerData.shapeType === 'polygon' && Array.isArray(layerData.points) && layerData.points.length >= 3) {
+    if (layerData.isBackdropLayer || layerData.id === 'layer_backdrop') {
+      const bgGeo = new THREE.PlaneGeometry(layerData.width || 6.0, layerData.height || 6.0);
+      const bgMat = new THREE.MeshStandardMaterial(Object.assign({
+        roughness: 0.88,
+        metalness: 0.02,
+        transparent: true,
+        alphaTest: 0.001,
+        side: THREE.FrontSide
+      }, matOptions));
+      mesh = new THREE.Mesh(bgGeo, bgMat);
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+      this.backdropLayerMesh = mesh;
+    } else if (layerData.shapeType === 'polygon' && Array.isArray(layerData.points) && layerData.points.length >= 3) {
       const pieceW = layerData.width || 4.0;
       const pieceH = layerData.height || 2.8;
       const localPolygonPoints = layerData.points.map(pt => ({
@@ -1149,6 +1232,8 @@ class PaperStudioApp {
           roughness: layerData.roughness || 0.08,
           detail: 20,
           seed: layerData.seed || 42,
+          hasWhiteBorder: true,
+          borderScale: 1.04,
           extrudeOptions: extrudeOpts
         },
         matOptions
@@ -1161,6 +1246,8 @@ class PaperStudioApp {
           roughness: layerData.roughness || 0.068,
           segments: 150,
           seed: layerData.seed || 179,
+          hasWhiteBorder: true,
+          borderScale: 1.04,
           extrudeOptions: extrudeOpts
         },
         matOptions
@@ -1174,6 +1261,8 @@ class PaperStudioApp {
           roughness: layerData.roughness || 0.075,
           detail: 70,
           seed: layerData.seed || 42,
+          hasWhiteBorder: true,
+          borderScale: 1.04,
           extrudeOptions: extrudeOpts
         },
         matOptions

@@ -132,8 +132,8 @@ export class SceneManager {
     });
 
     this.boardMesh = new THREE.Mesh(boardGeo, boardMat);
-    // 종이 레이어보다 약간 뒤(Z = -0.05)에 배치하여 그림자를 확실하게 수신
-    this.boardMesh.position.set(0, 0, -0.05);
+    // 액자 내부의 어두운 매트 보드(Z = -0.15)를 배치하여 구멍 뚫린 곳을 통해 안쪽 깊은 공간이 들여다보이도록 설정
+    this.boardMesh.position.set(0, 0, -0.15);
     this.boardMesh.receiveShadow = true;
     this.boardMesh.userData = { isBoard: true, isBackdrop: true };
 
@@ -382,14 +382,16 @@ export class SceneManager {
       this.layers.splice(idx, 1);
     }
     this.scene.remove(mesh);
-    if (mesh.geometry) mesh.geometry.dispose();
-    if (mesh.material) {
-      if (Array.isArray(mesh.material)) {
-        mesh.material.forEach(m => m.dispose());
-      } else {
-        mesh.material.dispose();
+    mesh.traverse((child) => {
+      if (child.geometry) child.geometry.dispose();
+      if (child.material) {
+        if (Array.isArray(child.material)) {
+          child.material.forEach(m => m.dispose());
+        } else {
+          child.material.dispose();
+        }
       }
-    }
+    });
   }
 
   /**
