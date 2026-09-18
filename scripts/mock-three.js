@@ -87,6 +87,30 @@ export class Shape {
     this.autoClose = true;
     this.actions.push({ type: 'closePath' });
   }
+  quadraticCurveTo(cpX, cpY, x, y) {
+    const p0 = new Vector2(this.currentPoint.x, this.currentPoint.y);
+    const divisions = 6;
+    for (let d = 1; d <= divisions; d++) {
+      const t = d / divisions;
+      const invT = 1 - t;
+      const px = invT * invT * p0.x + 2 * invT * t * cpX + t * t * x;
+      const py = invT * invT * p0.y + 2 * invT * t * cpY + t * t * y;
+      this.actions.push({ type: 'lineTo', x: px, y: py });
+    }
+    this.currentPoint.set(x, y);
+  }
+  bezierCurveTo(cp1X, cp1Y, cp2X, cp2Y, x, y) {
+    const p0 = new Vector2(this.currentPoint.x, this.currentPoint.y);
+    const divisions = 8;
+    for (let d = 1; d <= divisions; d++) {
+      const t = d / divisions;
+      const invT = 1 - t;
+      const px = invT * invT * invT * p0.x + 3 * invT * invT * t * cp1X + 3 * invT * t * t * cp2X + t * t * t * x;
+      const py = invT * invT * invT * p0.y + 3 * invT * invT * t * cp1Y + 3 * invT * t * t * cp2Y + t * t * t * y;
+      this.actions.push({ type: 'lineTo', x: px, y: py });
+    }
+    this.currentPoint.set(x, y);
+  }
   getPoints() {
     return this.actions
       .filter(a => a.type === 'moveTo' || a.type === 'lineTo')

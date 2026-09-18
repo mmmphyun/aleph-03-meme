@@ -865,7 +865,8 @@ class PaperStudioApp {
     if (valRot) valRot.textContent = `${deg}°`;
 
     // Scale
-    const scale = Number(mesh.scale.x.toFixed(2));
+    const isMemo = Boolean(this.memoEngine && (mesh === this.memoEngine.mesh || mesh.userData?.isMemoLabel));
+    const scale = isMemo ? Number(this.memoEngine.state.scale.toFixed(2)) : Number(mesh.scale.x.toFixed(2));
     if (sliderScale) sliderScale.value = scale;
     if (valScale) valScale.textContent = `${scale.toFixed(2)}×`;
 
@@ -931,12 +932,13 @@ class PaperStudioApp {
       sliderScale.addEventListener('input', (e) => {
         if (!this.selectedLayer) return;
         const scale = parseFloat(e.target.value);
-        this.selectedLayer.scale.set(scale, scale, 1);
-        if (valScale) valScale.textContent = `${scale.toFixed(2)}×`;
         if (this.memoEngine && (this.selectedLayer === this.memoEngine.mesh || this.selectedLayer.userData?.isMemoLabel)) {
-          this.memoEngine.state.scale = scale;
+          this.memoEngine.setScale(scale);
           this.syncMemoUIFromEngine();
+        } else {
+          this.selectedLayer.scale.set(scale, scale, 1);
         }
+        if (valScale) valScale.textContent = `${scale.toFixed(2)}×`;
       });
     }
 

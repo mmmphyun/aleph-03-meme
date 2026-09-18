@@ -5,6 +5,93 @@
 
 import * as THREE from 'three';
 
+/**
+ * 다각형 둘레를 따라 거리 기반 균일 리샘플링 수행 (약 18~28개 핵심 제어점 추출)
+ * 마우스 드래그로 과도하게 수집된 수백 개의 점을 완만한 제어점으로 균일 정규화합니다.
+ * @param {Array<{x: number, y: number}>} points
+ * @param {number} [targetCount=24]
+ * @returns {Array<{x: number, y: number}>}
+ */
+export function resamplePolygon(points, targetCount = 24) {
+  if (!Array.isArray(points) || points.length < 3) {
+    return points ? [...points] : [];
+  }
+
+  const n = points.length;
+  // 각 선분 길이 및 총 둘레(Perimeter) 연산
+  const dists = new Float64Array(n);
+  let totalPerimeter = 0;
+  for (let i = 0; i < n; i++) {
+    const p1 = points[i];
+    const p2 = points[(i + 1) % n];
+    const d = Math.hypot(p2.x - p1.x, p2.y - p1.y);
+    dists[i] = d;
+    totalPerimeter += d;
+  }
+
+  if (totalPerimeter < 1e-6) {
+    return points.slice(0, 3);
+  }
+
+  const count = Math.max(18, Math.min(28, targetCount));
+  const stepDist = totalPerimeter / count;
+  const resampled = [];
+
+  let currentDist = 0;
+  let segIdx = 0;
+
+  for (let i = 0; i < count; i++) {
+    const targetDist = i * stepDist;
+
+    while (segIdx < n && currentDist + dists[segIdx] < targetDist) {
+      currentDist += dists[segIdx];
+      segIdx++;
+    }
+
+    if (segIdx >= n) {
+      break;
+    }
+
+    const segLen = dists[segIdx];
+    const remain = targetDist - currentDist;
+    const t = segLen > 1e-7 ? Math.min(1.0, Math.max(0.0, remain / segLen)) : 0;
+    const p1 = points[segIdx];
+    const p2 = points[(segIdx + 1) % n];
+
+    resampled.push({
+      x: Number((p1.x + t * (p2.x - p1.x)).toFixed(5)),
+      y: Number((p1.y + t * (p2.y - p1.y)).toFixed(5))
+    });
+  }
+
+  return resampled.length >= 3 ? resampled : points;
+}
+
+/**
+ * 2D 캔버스 컨텍스트 상에 리샘플링된 점들을 부드러운 2차 베지에 곡선으로 폐곡선 패스 생성
+ * @param {CanvasRenderingContext2D} ctx
+ * @param {Array<{x: number, y: number}>} pts
+ * @param {number} scaleW
+ * @param {number} scaleH
+ */
+export function drawSmoothPolygonPath(ctx, pts, scaleW, scaleH) {
+  if (!pts || pts.length < 3) return;
+  const n = pts.length;
+  ctx.beginPath();
+  const firstMidX = ((pts[n - 1].x + pts[0].x) / 2) * scaleW;
+  const firstMidY = ((pts[n - 1].y + pts[0].y) / 2) * scaleH;
+  ctx.moveTo(firstMidX, firstMidY);
+
+  for (let i = 0; i < n; i++) {
+    const curr = pts[i];
+    const next = pts[(i + 1) % n];
+    const midX = ((curr.x + next.x) / 2) * scaleW;
+    const midY = ((curr.y + next.y) / 2) * scaleH;
+    ctx.quadraticCurveTo(curr.x * scaleW, curr.y * scaleH, midX, midY);
+  }
+  ctx.closePath();
+}
+
 export class CropTool {
   /**
    * @param {Object} options
@@ -717,11 +804,14 @@ export class CropTool {
     };
 
     // 5. 다각형인 경우 바운딩 박스 기준의 상대 정규화 포인트 변환 (0.0 ~ 1.0)
+    // 수백 개의 마우스 드래그 포인트를 거리 기반 균일 리샘플링(약 18~28개 제어점)하여 points로 전달
     let relativePoints = [];
+    let smoothLassoPoints = [];
     if (this.shapeType === 'polygon' && this.lassoPoints && this.lassoPoints.length >= 3) {
+      smoothLassoPoints = resamplePolygon(this.lassoPoints, 24);
       const bw = Math.max(1e-6, maxX - minX);
       const bh = Math.max(1e-6, maxY - minY);
-      relativePoints = this.lassoPoints.map(pt => ({
+      relativePoints = smoothLassoPoints.map(pt => ({
         x: Number(((pt.x - minX) / bw).toFixed(4)),
         y: Number(((pt.y - minY) / bh).toFixed(4))
       }));
@@ -745,49 +835,44 @@ export class CropTool {
 
     bgCtx.save();
     bgCtx.globalCompositeOperation = 'destination-out';
-    bgCtx.beginPath();
 
-    if (this.shapeType === 'polygon' && this.lassoPoints && this.lassoPoints.length >= 3) {
-      bgCtx.moveTo(this.lassoPoints[0].x * origW, this.lassoPoints[0].y * origH);
-      for (let i = 1; i < this.lassoPoints.length; i++) {
-        bgCtx.lineTo(this.lassoPoints[i].x * origW, this.lassoPoints[i].y * origH);
-      }
-      bgCtx.closePath();
+    if (this.shapeType === 'polygon' && smoothLassoPoints.length >= 3) {
+      drawSmoothPolygonPath(bgCtx, smoothLassoPoints, origW, origH);
       bgCtx.fill();
     } else if (this.shapeType === 'circle') {
+      bgCtx.beginPath();
       const cx = sx + sw / 2;
       const cy = sy + sh / 2;
       const r = Math.min(sw, sh) / 2;
       bgCtx.arc(cx, cy, r, 0, Math.PI * 2);
       bgCtx.fill();
     } else {
+      bgCtx.beginPath();
       bgCtx.rect(sx, sy, sw, sh);
       bgCtx.fill();
     }
     bgCtx.restore();
 
     // 구멍 난 테두리에 흰색 찢김 종이 섬유 림(White Torn Hole Rim) 렌더링
+    // 리샘플링된 부드러운 스플라인 다각형 패스로 렌더링하여 가시/톱니 없이 매끄러운 인화지 단면 형성
     bgCtx.save();
     bgCtx.strokeStyle = 'rgba(247, 245, 240, 0.95)';
     bgCtx.lineWidth = Math.max(3, Math.round(origW * 0.006));
     bgCtx.shadowColor = 'rgba(0, 0, 0, 0.4)';
     bgCtx.shadowBlur = 4;
-    bgCtx.beginPath();
 
-    if (this.shapeType === 'polygon' && this.lassoPoints && this.lassoPoints.length >= 3) {
-      bgCtx.moveTo(this.lassoPoints[0].x * origW, this.lassoPoints[0].y * origH);
-      for (let i = 1; i < this.lassoPoints.length; i++) {
-        bgCtx.lineTo(this.lassoPoints[i].x * origW, this.lassoPoints[i].y * origH);
-      }
-      bgCtx.closePath();
+    if (this.shapeType === 'polygon' && smoothLassoPoints.length >= 3) {
+      drawSmoothPolygonPath(bgCtx, smoothLassoPoints, origW, origH);
       bgCtx.stroke();
     } else if (this.shapeType === 'circle') {
+      bgCtx.beginPath();
       const cx = sx + sw / 2;
       const cy = sy + sh / 2;
       const r = Math.min(sw, sh) / 2;
       bgCtx.arc(cx, cy, r, 0, Math.PI * 2);
       bgCtx.stroke();
     } else {
+      bgCtx.beginPath();
       bgCtx.strokeRect(sx, sy, sw, sh);
     }
     bgCtx.restore();
@@ -805,7 +890,7 @@ export class CropTool {
       radius: radius,
       aspectRatio: Number(aspect.toFixed(3)),
       points: relativePoints,
-      lassoPoints: this.lassoPoints ? this.lassoPoints.map(pt => ({ x: pt.x, y: pt.y })) : [],
+      lassoPoints: smoothLassoPoints.length > 0 ? smoothLassoPoints : (this.lassoPoints ? this.lassoPoints.map(pt => ({ x: pt.x, y: pt.y })) : []),
       uvBounds: {
         minX: Number(minX.toFixed(4)),
         minY: Number(minY.toFixed(4)),

@@ -20,7 +20,7 @@ export class MemoLabelEngine {
     this.sceneManager = options.sceneManager;
     this.onUpdate = options.onUpdate || (() => {});
 
-    // 라벨 상태 설정 (기본값: 2.6x1.1 콤팩트 크기)
+    // 라벨 상태 설정 (기본값: 텍스트에 맞춘 동적 콤팩트 크기)
     this.state = {
       text: '찢겨진 종이 위에 남긴\n영감의 한 줄 ✂️✨',
       fontSize: 34,             // 캔버스 픽셀 기준 (18 ~ 84)
@@ -29,15 +29,20 @@ export class MemoLabelEngine {
       posX: 0.0,                // 3D 공간 X
       posY: -0.6,               // 3D 공간 Y
       posZ: 0.45,               // Z-Stack 최상단 높이
-      scale: 1.0,               // 전체 크기 배율
-      baseWidth: 2.6,           // 3D 세계 폭 (3.8 -> 2.6 콤팩트 축소)
-      baseHeight: 1.1,          // 3D 세계 높이 (1.8 -> 1.1 콤팩트 축소)
+      scale: 1.0,               // 사용자 지정 배율
+      baseWidth: 1.0,           // 기본 단위 지오메트리 폭
+      baseHeight: 1.0,          // 기본 단위 지오메트리 높이
+      width: 1.4,               // 동적 계산 3D 가로 크기
+      height: 0.8,              // 동적 계산 3D 세로 크기
       roughness: 0.075,
       seed: 88192
     };
 
-    // 2D 오프스크린 캔버스 (고해상도 텍스처 렌더링용: 1024x512)
-    this.canvasWidth = 1024;
+    this.computedWidth = 1.4;
+    this.computedHeight = 0.8;
+
+    // 2D 오프스크린 캔버스 (고해상도 텍스처 렌더링용)
+    this.canvasWidth = 768;
     this.canvasHeight = 512;
     this.canvas = document.createElement('canvas');
     this.canvas.width = this.canvasWidth;
@@ -47,10 +52,65 @@ export class MemoLabelEngine {
     this.texture = null;
     this.mesh = null;
 
+    // 텍스트 바운딩 크기 사전 연산
+    this._updateTightDimensions();
+
     // 초기 기동 시 완전한 백지 상태 유지를 위해 씬에 미리 추가하지 않음 (autoAddToScene: false)
     const autoAddToScene = options.autoAddToScene ?? false;
     this._initMesh(autoAddToScene);
     this.renderCanvas();
+  }
+
+  /**
+   * 텍스트 실제 바운딩 크기 및 상하좌우 20% 여백을 기반으로 3D 월드 크기 동적 연산
+   * @private
+   */
+  _updateTightDimensions() {
+    const text = this.state.text !== undefined && this.state.text !== null ? String(this.state.text) : '';
+    const fontSize = this.state.fontSize || 34;
+
+    if (text.trim().length === 0) {
+      this.computedWidth = 1.2;
+      this.computedHeight = 0.6;
+      this.state.width = this.computedWidth;
+      this.state.height = this.computedHeight;
+      return;
+    }
+
+    const lines = text.split('\n');
+    let maxLineWidth = 0;
+
+    // 임시 컨텍스트 폰트 설정 후 줄별 실제 텍스트 폭 정밀 측정
+    this.ctx.save();
+    this.ctx.font = `600 ${fontSize}px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Noto Sans KR", sans-serif`;
+    for (const line of lines) {
+      const metrics = this.ctx.measureText(line);
+      if (metrics.width > maxLineWidth) {
+        maxLineWidth = metrics.width;
+      }
+    }
+    this.ctx.restore();
+
+    const lineHeight = Math.round(fontSize * 1.35);
+    const lineCount = Math.max(1, lines.length);
+    const totalTextHeight = lineCount * lineHeight;
+
+    // 상하좌우 20% 여백(Padding)만 남기고 딱 맞게 감싸는 여백 픽셀 (텍스트가 약 70% 차지하도록 1.4배)
+    const paddedPixelW = Math.max(24, maxLineWidth * 1.40);
+    const paddedPixelH = Math.max(24, totalTextHeight * 1.40);
+
+    // 캔버스 픽셀을 3D 월드 단위로 정밀 환산
+    // "KING KEV" 2줄 ("KING\nKEV", 4글자, 2줄) 기준:
+    // paddedPixelW ≈ 130px -> 월드 폭 약 1.4
+    // paddedPixelH ≈ 129px -> 월드 높이 약 0.8
+    const rawWorldW = paddedPixelW * 0.0105;
+    const rawWorldH = paddedPixelH * 0.0062;
+
+    this.computedWidth = Number(Math.max(0.8, Math.min(4.5, rawWorldW)).toFixed(2));
+    this.computedHeight = Number(Math.max(0.5, Math.min(3.2, rawWorldH)).toFixed(2));
+
+    this.state.width = this.computedWidth;
+    this.state.height = this.computedHeight;
   }
 
   /**
@@ -67,14 +127,14 @@ export class MemoLabelEngine {
       this.texture.colorSpace = THREE.SRGBColorSpace;
     }
 
-    // 찢긴 사각형 메쉬 생성 (2.6x1.1 콤팩트 비율)
+    // 기본 단위 사각형 메쉬 (1.0 x 1.0) 생성 후 scale로 비례 조정
     this.mesh = createTornPaperMesh(
       'rectangle',
       {
-        width: this.state.baseWidth,
-        height: this.state.baseHeight,
+        width: 1.0,
+        height: 1.0,
         roughness: this.state.roughness,
-        detail: 70,
+        detail: 50,
         seed: this.state.seed,
         extrudeOptions: {
           depth: 0.035,
@@ -91,7 +151,7 @@ export class MemoLabelEngine {
     );
 
     this.mesh.position.set(this.state.posX, this.state.posY, this.state.posZ);
-    this.mesh.scale.set(this.state.scale, this.state.scale, 1);
+    this.mesh.scale.set(this.computedWidth * this.state.scale, this.computedHeight * this.state.scale, 1);
     this.mesh.visible = addToScene;
 
     this.mesh.userData = {
@@ -99,8 +159,8 @@ export class MemoLabelEngine {
       name: '📝 텍스트 메모지',
       isMemoLabel: true,
       shapeType: 'rectangle',
-      width: this.state.baseWidth,
-      height: this.state.baseHeight,
+      width: this.computedWidth,
+      height: this.computedHeight,
       zIndex: this.state.posZ
     };
 
@@ -147,23 +207,45 @@ export class MemoLabelEngine {
    * 오프스크린 2D 캔버스에 찢긴 종이 질감 배경 및 텍스트 렌더링
    */
   renderCanvas() {
+    this._updateTightDimensions();
+
+    const targetW = this.computedWidth;
+    const targetH = this.computedHeight;
+    const aspect = targetW / targetH;
+
+    // 1. 캔버스 해상도를 3D 종이 비율에 완벽히 동기화 (텍스처 왜곡/비틀림 원천 방지)
+    const baseH = 512;
+    const baseW = Math.max(256, Math.min(1536, Math.round(baseH * aspect)));
+    if (this.canvas.width !== baseW || this.canvas.height !== baseH) {
+      this.canvas.width = baseW;
+      this.canvas.height = baseH;
+      this.canvasWidth = baseW;
+      this.canvasHeight = baseH;
+    }
+
     const ctx = this.ctx;
     const w = this.canvasWidth;
     const h = this.canvasHeight;
 
     ctx.clearRect(0, 0, w, h);
 
-    // 1. 메모지 배경색 칠하기
+    // 2. 메모지 배경색 칠하기
     ctx.fillStyle = this.state.paperColor;
     ctx.fillRect(0, 0, w, h);
 
-    // 2. 미세 종이 펄프 섬유 질감 및 노이즈
+    // 3. 미세 종이 펄프 섬유 질감 및 노이즈
     this._drawPaperPulpTexture(ctx, w, h);
 
-    // 3. 은은한 메모지 모눈/가이드 라인 (연한 격자 느낌)
-    ctx.strokeStyle = 'rgba(0, 0, 0, 0.04)';
+    // 4. 은은한 메모지 모눈/가이드 라인 (정사각형 격자)
+    ctx.strokeStyle = 'rgba(0, 0, 0, 0.035)';
     ctx.lineWidth = 1;
-    const gridStep = 48;
+    const gridStep = 44;
+    for (let x = gridStep; x < w; x += gridStep) {
+      ctx.beginPath();
+      ctx.moveTo(x, 0);
+      ctx.lineTo(x, h);
+      ctx.stroke();
+    }
     for (let y = gridStep; y < h; y += gridStep) {
       ctx.beginPath();
       ctx.moveTo(0, y);
@@ -171,10 +253,17 @@ export class MemoLabelEngine {
       ctx.stroke();
     }
 
-    // 4. 텍스트 렌더링 (줄바꿈, 이모지 및 다채로운 특수문자 지원)
+    // 5. 텍스트 렌더링 (상하좌우 20% 여백 영역을 고려한 중앙 맞춤)
     this._drawWrappedText(ctx, w, h);
 
-    // 5. CanvasTexture 갱신
+    // 6. 3D 메쉬 스케일 즉시 동기화 (지오메트리 재생성 없는 안전한 scale.set으로 무한 루프 원천 방지)
+    if (this.mesh) {
+      this.mesh.scale.set(this.computedWidth * this.state.scale, this.computedHeight * this.state.scale, 1);
+      this.mesh.userData.width = this.computedWidth;
+      this.mesh.userData.height = this.computedHeight;
+    }
+
+    // 7. CanvasTexture 갱신
     if (this.texture) {
       this.texture.needsUpdate = true;
     }
@@ -199,6 +288,7 @@ export class MemoLabelEngine {
 
   /**
    * 긴 문장 자동 줄바꿈(Word wrap) 및 이모지 지원 텍스트 렌더링
+   * 상하좌우 20% 여백(Padding)을 남기고 중앙 영역에 딱 맞게 정렬
    * @private
    * @param {CanvasRenderingContext2D} ctx
    * @param {number} w
@@ -207,10 +297,10 @@ export class MemoLabelEngine {
   _drawWrappedText(ctx, w, h) {
     const text = this.state.text !== undefined && this.state.text !== null ? String(this.state.text) : '';
     let fontSize = this.state.fontSize;
-    const paddingX = 36;
-    const paddingY = 22;
-    const maxTextWidth = w - paddingX * 2;
-    const maxTextHeight = h - paddingY * 2;
+    const paddingX = Math.round(w * 0.18);
+    const paddingY = Math.round(h * 0.18);
+    const maxTextWidth = Math.max(40, w - paddingX * 2);
+    const maxTextHeight = Math.max(30, h - paddingY * 2);
 
     // 빈 텍스트인 경우 배경만 남김 (T03-C14 빈 문구 대응)
     if (text.trim().length === 0) {
@@ -220,7 +310,7 @@ export class MemoLabelEngine {
     // 텍스트 줄바꿈 및 높이 계산 헬퍼
     const layoutLines = (size) => {
       ctx.font = `600 ${size}px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Noto Sans KR", "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", sans-serif`;
-      const lineHeight = Math.round(size * 1.45);
+      const lineHeight = Math.round(size * 1.35);
       const rawParagraphs = text.split('\n');
       const lines = [];
 
@@ -250,10 +340,10 @@ export class MemoLabelEngine {
       return { lines, lineHeight, totalHeight: lines.length * lineHeight };
     };
 
-    // 140px 등 초거대 폰트나 다중 줄바꿈/긴 문장 시 캔버스 상하를 초과하지 않도록 적응형 스케일 다운
+    // 캔버스 크기에 비례하여 텍스트 영역이 상하좌우 20% 여백 내에 꼭 맞도록 폰트 자동 스케일
     let layout = layoutLines(fontSize);
-    while (layout.totalHeight > maxTextHeight && fontSize > 14) {
-      fontSize = Math.max(12, Math.floor(fontSize * 0.88));
+    while ((layout.totalHeight > maxTextHeight || layout.lines.some(l => ctx.measureText(l).width > maxTextWidth)) && fontSize > 14) {
+      fontSize = Math.max(12, Math.floor(fontSize * 0.90));
       layout = layoutLines(fontSize);
     }
 
@@ -328,7 +418,7 @@ export class MemoLabelEngine {
   setScale(scale) {
     this.state.scale = Number(scale.toFixed(2));
     if (this.mesh) {
-      this.mesh.scale.set(this.state.scale, this.state.scale, 1);
+      this.mesh.scale.set(this.computedWidth * this.state.scale, this.computedHeight * this.state.scale, 1);
     }
     this.onUpdate(this.state);
   }
@@ -347,11 +437,11 @@ export class MemoLabelEngine {
   fromJSON(data) {
     if (!data) return;
     Object.assign(this.state, data);
+    this.renderCanvas();
     if (this.mesh) {
       this.mesh.position.set(this.state.posX, this.state.posY, this.state.posZ);
-      this.mesh.scale.set(this.state.scale, this.state.scale, 1);
+      this.mesh.scale.set(this.computedWidth * this.state.scale, this.computedHeight * this.state.scale, 1);
     }
-    this.renderCanvas();
     this.onUpdate(this.state);
   }
 

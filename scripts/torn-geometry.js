@@ -245,12 +245,13 @@ export function createTornCircleShape(radius = 1.2, options = {}) {
 
 /**
  * 사용자가 지정한 임의의 다각형(Lasso 외곽선)을 기반으로 자연스러운 찢긴 종이 2D Shape 생성
- * 각 선분(세그먼트)마다 코너 연결성을 유지하면서 다중 주파수 사인파 및 2D FBM 노이즈를 수직 변위로 가산합니다.
+ * 촘촘한 점 사이사이에 가시 노이즈를 곱하는 대신, 리샘플링된 점들을 통틀어 전체 둘레 기준의
+ * 초저주파 완만한 사인파(1~2주기)와 극저주파 노이즈를 가산하고 각 점 사이를 완만한 2차 베지에 곡선으로 연결합니다.
  *
  * @param {Array<{x: number, y: number}>} points - 다각형 꼭짓점 좌표 배열
  * @param {Object} [options] - 알고리즘 파라미터
  * @param {number} [options.roughness=0.06] - 찢김 거칠기 강도
- * @param {number} [options.detail=20] - 각 변당 기본 세그먼트 분할 수
+ * @param {number} [options.detail=20] - 세그먼트 분할 보정값
  * @param {number} [options.seed=99] - 노이즈 시드
  * @param {boolean} [options.closed=true] - 폐곡선 여부 (시작점과 끝점 자동 연결)
  * @returns {THREE.Shape}
@@ -258,7 +259,6 @@ export function createTornCircleShape(radius = 1.2, options = {}) {
 export function createTornPolygonShape(points = [], options = {}) {
   const {
     roughness = 0.06,
-    detail = 20,
     seed = 99,
     closed = true
   } = options;
@@ -275,7 +275,7 @@ export function createTornPolygonShape(points = [], options = {}) {
   }
 
   // 꼭짓점 목록 복사 및 정제 (마지막 점이 첫 점과 거의 일치하는 경우 중복 제거)
-  const pts = points.map(p => ({ x: Number(p.x) || 0, y: Number(p.y) || 0 }));
+  let pts = points.map(p => ({ x: Number(p.x) || 0, y: Number(p.y) || 0 }));
   const last = pts[pts.length - 1];
   const first = pts[0];
   const distSq = (last.x - first.x) ** 2 + (last.y - first.y) ** 2;
@@ -283,72 +283,159 @@ export function createTornPolygonShape(points = [], options = {}) {
     pts.pop();
   }
 
+  // 외부에서 수백 개의 미세 드래그 점이 그대로 유입될 경우를 대비한 2차 안전 균일 리샘플링 (18~28개 제어점 보장)
+  if (pts.length > 32) {
+    const totalP = pts.reduce((acc, p, idx) => {
+      const nextP = pts[(idx + 1) % pts.length];
+      return acc + Math.hypot(nextP.x - p.x, nextP.y - p.y);
+    }, 0);
+    const targetN = 24;
+    const stepL = totalP / targetN;
+    const resampled = [];
+    let curL = 0;
+    let sIdx = 0;
+    for (let i = 0; i < targetN; i++) {
+      const targetL = i * stepL;
+      while (sIdx < pts.length) {
+        const segD = Math.hypot(pts[(sIdx + 1) % pts.length].x - pts[sIdx].x, pts[(sIdx + 1) % pts.length].y - pts[sIdx].y);
+        if (curL + segD >= targetL) {
+          const remain = targetL - curL;
+          const t = segD > 1e-6 ? remain / segD : 0;
+          resampled.push({
+            x: pts[sIdx].x + t * (pts[(sIdx + 1) % pts.length].x - pts[sIdx].x),
+            y: pts[sIdx].y + t * (pts[(sIdx + 1) % pts.length].y - pts[sIdx].y)
+          });
+          break;
+        }
+        curL += segD;
+        sIdx++;
+      }
+    }
+    if (resampled.length >= 3) {
+      pts = resampled;
+    }
+  }
+
   const n = pts.length;
   const noise = new PseudoNoise2D(seed);
-  let isFirstPoint = true;
 
-  // 세그먼트별 순회 (0 -> 1, 1 -> 2, ..., n-1 -> 0)
-  for (let segIdx = 0; segIdx < n; segIdx++) {
-    const nextIdx = (segIdx + 1) % n;
-    if (!closed && segIdx === n - 1) break;
+  // 1. 전체 둘레(Perimeter) 및 각 꼭짓점의 누적 호 길이(Arc-length) 연산
+  const segLengths = new Float64Array(n);
+  const arcPositions = new Float64Array(n);
+  let totalPerimeter = 0;
 
-    const pStart = pts[segIdx];
-    const pEnd = pts[nextIdx];
+  for (let i = 0; i < n; i++) {
+    arcPositions[i] = totalPerimeter;
+    const nextIdx = (i + 1) % n;
+    const d = Math.hypot(pts[nextIdx].x - pts[i].x, pts[nextIdx].y - pts[i].y);
+    segLengths[i] = d;
+    totalPerimeter += d;
+  }
 
-    const dx = pEnd.x - pStart.x;
-    const dy = pEnd.y - pStart.y;
-    const segLen = Math.hypot(dx, dy);
+  if (totalPerimeter < 1e-6) {
+    totalPerimeter = 1.0;
+  }
 
-    // 세그먼트 길이가 거의 0인 축퇴 세그먼트 처리
-    if (segLen < 1e-6) {
-      if (isFirstPoint) {
-        shape.moveTo(pStart.x, pStart.y);
-        isFirstPoint = false;
-      }
+  // 다각형 바운딩 박스 크기 추정 (변위 스케일 계수로 활용)
+  let minX = pts[0].x, maxX = pts[0].x, minY = pts[0].y, maxY = pts[0].y;
+  for (let i = 1; i < n; i++) {
+    if (pts[i].x < minX) minX = pts[i].x;
+    if (pts[i].x > maxX) maxX = pts[i].x;
+    if (pts[i].y < minY) minY = pts[i].y;
+    if (pts[i].y > maxY) maxY = pts[i].y;
+  }
+  const polyScale = Math.max(0.1, Math.min(maxX - minX, maxY - minY));
+
+  // 2. 각 꼭짓점에 전체 둘레 기준의 초저주파 사인파(1~2주기)와 극저주파 노이즈 변위 인가
+  const perturbedPoints = [];
+  for (let i = 0; i < n; i++) {
+    if (i === 0) {
+      // 단위 테스트 단언문 무결성 및 폐곡선 시작점 완벽 일치 보장
+      perturbedPoints.push({ x: pts[0].x, y: pts[0].y });
       continue;
     }
 
-    // 선분의 단위 방향 벡터 및 외곽 수직 법선 벡터 (-dy/L, dx/L)
-    const nx = -dy / segLen;
-    const ny = dx / segLen;
+    const prevIdx = (i - 1 + n) % n;
+    const nextIdx = (i + 1) % n;
 
-    // 세그먼트 분할 스텝 수 산정
-    const steps = Math.max(4, Math.round(detail));
+    // 꼭짓점 접선 벡터 및 외향 단위 법선 벡터
+    const tx = pts[nextIdx].x - pts[prevIdx].x;
+    const ty = pts[nextIdx].y - pts[prevIdx].y;
+    const tLen = Math.hypot(tx, ty);
+    const nx = tLen > 1e-6 ? -ty / tLen : 0;
+    const ny = tLen > 1e-6 ? tx / tLen : 0;
 
-    for (let j = 0; j <= steps; j++) {
-      // 이전 세그먼트 끝점과 현재 세그먼트 시작점 중복 방지
-      if (j === 0 && !isFirstPoint) continue;
+    // 둘레 상의 정규화 파라미터 u (0.0 ~ 1.0)
+    const u = arcPositions[i] / totalPerimeter;
 
-      const t = j / steps;
-      const baseX = pStart.x + t * dx;
-      const baseY = pStart.y + t * dy;
+    // 0과 1에서 부드럽게 수렴하는 스무딩 엔벨로프
+    const envelope = Math.sin(u * Math.PI);
 
-      let px = baseX;
-      let py = baseY;
+    // 둘레 전체 1.5주기의 초저주파 완만한 사인파
+    const lowFreqWave = Math.sin(u * Math.PI * 2.0 * 1.5 + (seed % 97) * 0.1);
 
-      // 양 끝점에서는 다각형 원래 꼭짓점 위치로 수렴 (연결성 보장)
-      if (j > 0 && j < steps) {
-        // 엔벨로프 커브 (0 -> 1 -> 0)
-        const envelope = Math.pow(Math.sin(Math.PI * t), 0.75);
+    // 극저주파 2D 노이즈 (원형 파라미터화로 0도와 360도 경계면 연속)
+    const angle = u * Math.PI * 2.0;
+    const lowFreqNoise = noise.noise2D(Math.cos(angle) * 1.3 + 1.2, Math.sin(angle) * 1.3 + 1.2);
 
-        // 부드러운 유기적 손 찢김 초저주파 파형 (변당 1주기 내외, 가시/톱니 스파이크 완전 제거)
-        const lowFreqWave = Math.sin(t * Math.PI * 2.0 + segIdx * 1.4);
+    const displacement = (lowFreqWave * 0.70 + lowFreqNoise * 0.30) * (roughness * 0.40) * polyScale * envelope;
 
-        // 1옥타브 저주파 노이즈 결합
-        const lowFreqNoise = noise.noise2D(t * 1.4 + segIdx * 2.2, segIdx * 1.6);
+    perturbedPoints.push({
+      x: pts[i].x + nx * displacement,
+      y: pts[i].y + ny * displacement
+    });
+  }
 
-        // 부드러운 결합 변위 적용
-        const displacement = (lowFreqWave * 0.70 + lowFreqNoise * 0.30) * (roughness * 0.55) * envelope;
+  // 3. 각 점 사이를 직선(뾰족한 가시) 대신 완만한 2차 베지에 곡선(quadraticCurveTo)으로 매끄럽게 연결
+  shape.moveTo(perturbedPoints[0].x, perturbedPoints[0].y);
 
-        px += nx * displacement;
-        py += ny * displacement;
-      }
+  for (let i = 0; i < n; i++) {
+    const nextIdx = (i + 1) % n;
+    if (!closed && i === n - 1) break;
 
-      if (isFirstPoint) {
-        shape.moveTo(px, py);
-        isFirstPoint = false;
-      } else {
-        shape.lineTo(px, py);
+    const pCurr = perturbedPoints[i];
+    const pNext = perturbedPoints[nextIdx];
+
+    const dx = pNext.x - pCurr.x;
+    const dy = pNext.y - pCurr.y;
+    const segLen = Math.hypot(dx, dy);
+
+    // 세그먼트 중점
+    const midX = (pCurr.x + pNext.x) / 2;
+    const midY = (pCurr.y + pNext.y) / 2;
+
+    if (segLen < 1e-6) {
+      shape.lineTo(pNext.x, pNext.y);
+      continue;
+    }
+
+    // 세그먼트 법선 벡터
+    const snx = -dy / segLen;
+    const sny = dx / segLen;
+
+    // 세그먼트 중간 위치의 정규화 파라미터
+    const uCurr = arcPositions[i] / totalPerimeter;
+    const uNext = nextIdx === 0 ? 1.0 : arcPositions[nextIdx] / totalPerimeter;
+    const uMid = (uCurr + uNext) / 2;
+
+    // 세그먼트 중간의 완만한 곡선 제어점 변위 (손으로 찢은 도톰한 인화지 곡률)
+    const midWave = Math.sin(uMid * Math.PI * 2.0 * 2.0);
+    const midNoise = noise.noise2D(Math.cos(uMid * Math.PI * 2) * 1.6 + 2.0, Math.sin(uMid * Math.PI * 2) * 1.6 + 2.0);
+    const midDisp = (midWave * 0.65 + midNoise * 0.35) * (roughness * 0.20) * Math.min(segLen, polyScale * 0.3);
+
+    const cpX = midX + snx * midDisp;
+    const cpY = midY + sny * midDisp;
+
+    if (typeof shape.quadraticCurveTo === 'function') {
+      shape.quadraticCurveTo(cpX, cpY, pNext.x, pNext.y);
+    } else {
+      // 런타임 호환 폴백: 2차 베지에 4분할 선형 보간
+      for (let s = 1; s <= 4; s++) {
+        const t = s / 4;
+        const it = 1 - t;
+        const bx = it * it * pCurr.x + 2 * it * t * cpX + t * t * pNext.x;
+        const by = it * it * pCurr.y + 2 * it * t * cpY + t * t * pNext.y;
+        shape.lineTo(bx, by);
       }
     }
   }
