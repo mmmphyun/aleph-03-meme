@@ -125,16 +125,43 @@ export class MemoLabelEngine {
       this.computedHeight = 0.6;
       this.paddedPixelW = 160;
       this.paddedPixelH = 80;
+      this.effectiveFontSize = fontSize;
+      this.wrappedLines = [];
       this.state.width = this.computedWidth;
       this.state.height = this.computedHeight;
       return;
     }
 
-    const lines = this._wrapLines(text, fontSize, 460);
-    let maxLineWidth = 0;
+    // 3D 씬 및 뷰포트 내 안전 최대 가용 규격 (최대 폭 3.45 유닛, 최대 높이 3.15 유닛)
+    const maxPixelW = 460;
+    const maxPixelH = 420;
 
+    let effectiveFontSize = fontSize;
+    let lines = this._wrapLines(text, effectiveFontSize, maxPixelW);
+    let lineHeight = Math.round(effectiveFontSize * 1.35);
+    let totalTextHeight = lines.length * lineHeight;
+
+    // 초장문/다중 개행 시 캔버스 상하 초과를 방지하기 위해 폰트 크기를 단계적 축소 (T03-C14, T03-C15)
+    while (totalTextHeight > (maxPixelH - Math.round(effectiveFontSize * 1.3)) && effectiveFontSize > 11) {
+      effectiveFontSize = Math.max(11, Math.floor(effectiveFontSize * 0.90));
+      lines = this._wrapLines(text, effectiveFontSize, maxPixelW);
+      lineHeight = Math.round(effectiveFontSize * 1.35);
+      totalTextHeight = lines.length * lineHeight;
+    }
+
+    // 폰트가 최소치(11px)에 도달한 극단 초장문의 경우 가용 높이 내 표시 가능한 줄 수로 클리핑
+    const maxVisibleLines = Math.max(1, Math.floor((maxPixelH - 30) / lineHeight));
+    if (lines.length > maxVisibleLines) {
+      lines = lines.slice(0, maxVisibleLines);
+      totalTextHeight = lines.length * lineHeight;
+    }
+
+    this.effectiveFontSize = effectiveFontSize;
+    this.wrappedLines = lines;
+
+    let maxLineWidth = 0;
     this.ctx.save();
-    this.ctx.font = `600 ${fontSize}px "Pretendard", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Noto Sans KR", "Malgun Gothic", sans-serif`;
+    this.ctx.font = `600 ${effectiveFontSize}px "Pretendard", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Noto Sans KR", "Malgun Gothic", sans-serif`;
     for (const line of lines) {
       const metrics = this.ctx.measureText(line);
       if (metrics.width > maxLineWidth) {
@@ -143,14 +170,10 @@ export class MemoLabelEngine {
     }
     this.ctx.restore();
 
-    const lineHeight = Math.round(fontSize * 1.35);
-    const lineCount = Math.max(1, lines.length);
-    const totalTextHeight = lineCount * lineHeight;
-
-    const paddingX = Math.round(fontSize * 0.9);
-    const paddingY = Math.round(fontSize * 0.65);
-    this.paddedPixelW = Math.max(80, maxLineWidth + paddingX * 2);
-    this.paddedPixelH = Math.max(50, totalTextHeight + paddingY * 2);
+    const paddingX = Math.round(effectiveFontSize * 0.9);
+    const paddingY = Math.round(effectiveFontSize * 0.65);
+    this.paddedPixelW = Math.min(maxPixelW, Math.max(80, maxLineWidth + paddingX * 2));
+    this.paddedPixelH = Math.min(maxPixelH, Math.max(50, totalTextHeight + paddingY * 2));
 
     // 캔버스 픽셀을 3D 월드 단위로 1:1 정방 비례 환산
     const worldScaleFactor = 0.0075;
@@ -266,7 +289,8 @@ export class MemoLabelEngine {
     const baseW = Math.round(paddedPixelW * dpr);
     const baseH = Math.round(paddedPixelH * dpr);
 
-    if (this.canvas.width !== baseW || this.canvas.height !== baseH) {
+    const sizeChanged = (this.canvas.width !== baseW || this.canvas.height !== baseH);
+    if (sizeChanged) {
       this.canvas.width = baseW;
       this.canvas.height = baseH;
       this.canvasWidth = baseW;
@@ -296,8 +320,19 @@ export class MemoLabelEngine {
       this.mesh.userData.height = this.computedHeight;
     }
 
-    // 6. CanvasTexture 갱신
-    if (this.texture) {
+    // 6. CanvasTexture 갱신 (캔버스 크기가 변경된 경우 WebGL2 immutable storage 충돌 방지를 위해 텍스처 안전 재할당)
+    if (sizeChanged && this.texture) {
+      this.texture.dispose();
+      this.texture = new THREE.CanvasTexture(this.canvas);
+      this.texture.generateMipmaps = true;
+      this.texture.minFilter = THREE.LinearMipmapLinearFilter;
+      this.texture.magFilter = THREE.LinearFilter;
+      this.texture.colorSpace = THREE.SRGBColorSpace;
+      if (this.mesh && this.mesh.material) {
+        this.mesh.material.map = this.texture;
+        this.mesh.material.needsUpdate = true;
+      }
+    } else if (this.texture) {
       this.texture.needsUpdate = true;
     }
   }
@@ -329,15 +364,14 @@ export class MemoLabelEngine {
    */
   _drawWrappedText(ctx, w, h, dpr = 1) {
     const text = this.state.text !== undefined && this.state.text !== null ? String(this.state.text) : '';
-    const baseFontSize = this.state.fontSize || 34;
-    const fontSize = baseFontSize * dpr;
-
     // 빈 텍스트인 경우 배경만 남김 (T03-C14 빈 문구 대응)
     if (text.trim().length === 0) {
       return;
     }
 
-    const lines = this._wrapLines(text, baseFontSize, 460);
+    const effectiveFontSize = this.effectiveFontSize || this.state.fontSize || 34;
+    const fontSize = effectiveFontSize * dpr;
+    const lines = this.wrappedLines || this._wrapLines(text, effectiveFontSize, 460);
     const lineHeight = Math.round(fontSize * 1.35);
     const totalHeight = lines.length * lineHeight;
 
