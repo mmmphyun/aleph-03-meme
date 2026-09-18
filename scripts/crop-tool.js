@@ -4,6 +4,7 @@
  */
 
 import * as THREE from 'three';
+import { buildPolygonPath } from './torn-geometry.js';
 
 /**
  * 다각형 둘레를 따라 거리 기반 균일 리샘플링 수행 (약 18~28개 핵심 제어점 추출)
@@ -68,28 +69,14 @@ export function resamplePolygon(points, targetCount = 24) {
 }
 
 /**
- * 2D 캔버스 컨텍스트 상에 리샘플링된 점들을 부드러운 2차 베지에 곡선으로 폐곡선 패스 생성
+ * 2D 캔버스 컨텍스트 상에 리샘플링된 점들을 부드러운 2차 베지에 곡선으로 폐곡선 패스 생성 (하위 호환 래퍼)
  * @param {CanvasRenderingContext2D} ctx
  * @param {Array<{x: number, y: number}>} pts
  * @param {number} scaleW
  * @param {number} scaleH
  */
 export function drawSmoothPolygonPath(ctx, pts, scaleW, scaleH) {
-  if (!pts || pts.length < 3) return;
-  const n = pts.length;
-  ctx.beginPath();
-  const firstMidX = ((pts[n - 1].x + pts[0].x) / 2) * scaleW;
-  const firstMidY = ((pts[n - 1].y + pts[0].y) / 2) * scaleH;
-  ctx.moveTo(firstMidX, firstMidY);
-
-  for (let i = 0; i < n; i++) {
-    const curr = pts[i];
-    const next = pts[(i + 1) % n];
-    const midX = ((curr.x + next.x) / 2) * scaleW;
-    const midY = ((curr.y + next.y) / 2) * scaleH;
-    ctx.quadraticCurveTo(curr.x * scaleW, curr.y * scaleH, midX, midY);
-  }
-  ctx.closePath();
+  buildPolygonPath(ctx, pts, { scaleX: scaleW, scaleY: scaleH, tearStyle: 'smooth' });
 }
 
 export class CropTool {
@@ -102,6 +89,7 @@ export class CropTool {
 
     this.currentImage = null;
     this.shapeType = 'polygon'; // 'polygon' | 'rectangle' | 'circle'
+    this.tearStyle = 'smooth'; // 'smooth' | 'geometric'
     this.roughness = 0.075;
 
     this.isOpen = false;
@@ -167,6 +155,21 @@ export class CropTool {
                   <button type="button" class="shape-toggle-btn" data-shape="circle">
                     <span class="shape-icon circle-icon"></span>
                     <span>원형 (찢긴 스티커)</span>
+                  </button>
+                </div>
+              </div>
+
+              <!-- 찢김 스타일 프리셋 선택 (Milestone 5) -->
+              <div class="crop-panel-section">
+                <span class="crop-section-label">찢김 스타일 프리셋</span>
+                <div class="crop-tear-style-group" role="group" aria-label="찢김 스타일 선택">
+                  <button type="button" class="tear-style-btn active" data-tear-style="smooth" title="완만한 베지에 곡선으로 부드럽게 찢긴 단면 연출">
+                    <span class="tear-style-icon wave-icon">🌊</span>
+                    <span>부드러운 유기적 찢김 (Smooth Organic)</span>
+                  </button>
+                  <button type="button" class="tear-style-btn" data-tear-style="geometric" title="반듯한 직선 각진 다각형으로 기하학적 오림 연출">
+                    <span class="tear-style-icon angle-icon">📐</span>
+                    <span>각진 기하학 오림 (Geometric Angular)</span>
                   </button>
                 </div>
               </div>
@@ -286,6 +289,17 @@ export class CropTool {
         if (this.shapeType === 'polygon' && this.lassoPoints.length < 3) {
           this._initDefaultPolygon();
         }
+        this.renderCanvas();
+      });
+    });
+
+    const tearStyleButtons = this.modalEl.querySelectorAll('.tear-style-btn');
+    tearStyleButtons.forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        tearStyleButtons.forEach(b => b.classList.remove('active'));
+        const targetBtn = e.currentTarget;
+        targetBtn.classList.add('active');
+        this.tearStyle = targetBtn.getAttribute('data-tear-style') || 'smooth';
         this.renderCanvas();
       });
     });
@@ -596,7 +610,10 @@ export class CropTool {
     ctx.beginPath();
 
     if (this.shapeType === 'polygon') {
-      if (this.lassoPoints && this.lassoPoints.length > 1) {
+      if (this.lassoPoints && this.lassoPoints.length >= 3 && !this.isDragging) {
+        const resampled = resamplePolygon(this.lassoPoints, 24);
+        buildPolygonPath(ctx, resampled, { scaleX: w, scaleY: h, tearStyle: this.tearStyle });
+      } else if (this.lassoPoints && this.lassoPoints.length > 1) {
         ctx.moveTo(this.lassoPoints[0].x * w, this.lassoPoints[0].y * h);
         for (let i = 1; i < this.lassoPoints.length; i++) {
           ctx.lineTo(this.lassoPoints[i].x * w, this.lassoPoints[i].y * h);
@@ -626,12 +643,14 @@ export class CropTool {
     ctx.beginPath();
     if (this.shapeType === 'polygon') {
       if (this.lassoPoints && this.lassoPoints.length > 0) {
-        ctx.moveTo(this.lassoPoints[0].x * w, this.lassoPoints[0].y * h);
-        for (let i = 1; i < this.lassoPoints.length; i++) {
-          ctx.lineTo(this.lassoPoints[i].x * w, this.lassoPoints[i].y * h);
-        }
         if (!this.isDragging && this.lassoPoints.length >= 3) {
-          ctx.closePath();
+          const resampled = resamplePolygon(this.lassoPoints, 24);
+          buildPolygonPath(ctx, resampled, { scaleX: w, scaleY: h, tearStyle: this.tearStyle });
+        } else {
+          ctx.moveTo(this.lassoPoints[0].x * w, this.lassoPoints[0].y * h);
+          for (let i = 1; i < this.lassoPoints.length; i++) {
+            ctx.lineTo(this.lassoPoints[i].x * w, this.lassoPoints[i].y * h);
+          }
         }
         ctx.stroke();
 
@@ -837,7 +856,7 @@ export class CropTool {
     bgCtx.globalCompositeOperation = 'destination-out';
 
     if (this.shapeType === 'polygon' && smoothLassoPoints.length >= 3) {
-      drawSmoothPolygonPath(bgCtx, smoothLassoPoints, origW, origH);
+      buildPolygonPath(bgCtx, smoothLassoPoints, { scaleX: origW, scaleY: origH, tearStyle: this.tearStyle });
       bgCtx.fill();
     } else if (this.shapeType === 'circle') {
       bgCtx.beginPath();
@@ -854,7 +873,7 @@ export class CropTool {
     bgCtx.restore();
 
     // 구멍 난 테두리에 흰색 찢김 종이 섬유 림(White Torn Hole Rim) 렌더링
-    // 리샘플링된 부드러운 스플라인 다각형 패스로 렌더링하여 가시/톱니 없이 매끄러운 인화지 단면 형성
+    // 선택된 tearStyle에 따라 완만한 베지에 곡선 또는 각진 직선 패스로 동일하게 렌더링
     bgCtx.save();
     bgCtx.strokeStyle = 'rgba(247, 245, 240, 0.95)';
     bgCtx.lineWidth = Math.max(3, Math.round(origW * 0.006));
@@ -862,7 +881,7 @@ export class CropTool {
     bgCtx.shadowBlur = 4;
 
     if (this.shapeType === 'polygon' && smoothLassoPoints.length >= 3) {
-      drawSmoothPolygonPath(bgCtx, smoothLassoPoints, origW, origH);
+      buildPolygonPath(bgCtx, smoothLassoPoints, { scaleX: origW, scaleY: origH, tearStyle: this.tearStyle });
       bgCtx.stroke();
     } else if (this.shapeType === 'circle') {
       bgCtx.beginPath();
@@ -883,6 +902,7 @@ export class CropTool {
       textureCanvas: cropCanvas,
       punchedBgCanvas,
       shapeType: this.shapeType,
+      tearStyle: this.tearStyle,
       roughness: this.roughness,
       seed,
       width: Number(worldW.toFixed(2)),

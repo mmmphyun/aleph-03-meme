@@ -244,22 +244,97 @@ export function createTornCircleShape(radius = 1.2, options = {}) {
 }
 
 /**
+ * 다각형 포인트 목록을 기반으로 캔버스 2D 컨텍스트 또는 THREE.Shape에 일체화된 외곽선 경로를 생성합니다.
+ * tearStyle에 따라 완만한 3차 베지에 스플라인('smooth') 또는 반듯한 직선 다각형('geometric')으로 완벽 일치 렌더링합니다.
+ *
+ * @param {CanvasRenderingContext2D|THREE.Shape|THREE.Path} pathTarget - 경로를 등록할 대상 (Canvas context 또는 THREE.Shape)
+ * @param {Array<{x: number, y: number}>} points - 다각형 꼭짓점 배열
+ * @param {Object} [options]
+ * @param {'smooth'|'geometric'} [options.tearStyle='smooth'] - 찢김 스타일 프리셋
+ * @param {number} [options.scaleX=1] - X축 스케일 배율
+ * @param {number} [options.scaleY=1] - Y축 스케일 배율
+ * @param {number} [options.offsetX=0] - X축 평행 이동
+ * @param {number} [options.offsetY=0] - Y축 평행 이동
+ * @param {boolean} [options.closed=true] - 폐곡선 여부
+ */
+export function buildPolygonPath(pathTarget, points, options = {}) {
+  if (!pathTarget || !Array.isArray(points) || points.length < 3) return;
+
+  const {
+    tearStyle = 'smooth',
+    scaleX = 1,
+    scaleY = 1,
+    offsetX = 0,
+    offsetY = 0,
+    closed = true
+  } = options;
+
+  // 꼭짓점 좌표 정제 및 스케일/오프셋 적용
+  let pts = points.map(p => ({
+    x: Number(p.x) * scaleX + offsetX,
+    y: Number(p.y) * scaleY + offsetY
+  }));
+
+  // 마지막 점이 첫 점과 중복되는 경우 제거
+  const last = pts[pts.length - 1];
+  const first = pts[0];
+  if (pts.length > 3 && Math.hypot(last.x - first.x, last.y - first.y) < 1e-6) {
+    pts = pts.slice(0, -1);
+  }
+
+  const n = pts.length;
+  if (n < 3) return;
+
+  if (typeof pathTarget.beginPath === 'function') {
+    pathTarget.beginPath();
+  }
+
+  pathTarget.moveTo(pts[0].x, pts[0].y);
+
+  if (tearStyle === 'geometric') {
+    // 📐 각진 기하학 오림: 반듯한 직선 각진 다각형으로 렌더링
+    for (let i = 1; i < n; i++) {
+      pathTarget.lineTo(pts[i].x, pts[i].y);
+    }
+  } else {
+    // 🌊 부드러운 유기적 찢김: 완만한 Catmull-Rom 3차 베지에 스플라인으로 렌더링
+    for (let i = 0; i < n; i++) {
+      if (!closed && i === n - 1) break;
+
+      const pPrev = pts[(i - 1 + n) % n];
+      const pCurr = pts[i];
+      const pNext = pts[(i + 1) % n];
+      const pNext2 = pts[(i + 2) % n];
+
+      // Catmull-Rom to Cubic Bézier 제어점 변환 (Tension = 0.5 표준)
+      const cp1x = pCurr.x + (pNext.x - pPrev.x) / 6;
+      const cp1y = pCurr.y + (pNext.y - pPrev.y) / 6;
+      const cp2x = pNext.x - (pNext2.x - pCurr.x) / 6;
+      const cp2y = pNext.y - (pNext2.y - pCurr.y) / 6;
+
+      pathTarget.bezierCurveTo(cp1x, cp1y, cp2x, cp2y, pNext.x, pNext.y);
+    }
+  }
+
+  if (closed && typeof pathTarget.closePath === 'function') {
+    pathTarget.closePath();
+  }
+}
+
+/**
  * 사용자가 지정한 임의의 다각형(Lasso 외곽선)을 기반으로 자연스러운 찢긴 종이 2D Shape 생성
- * 촘촘한 점 사이사이에 가시 노이즈를 곱하는 대신, 리샘플링된 점들을 통틀어 전체 둘레 기준의
- * 초저주파 완만한 사인파(1~2주기)와 극저주파 노이즈를 가산하고 각 점 사이를 완만한 2차 베지에 곡선으로 연결합니다.
+ * 배경 구멍(Canvas punchout)과 완벽히 동일한 포인트 리스트 및 곡선 생성 로직(buildPolygonPath)을 공유하여
+ * 정면 뷰에서 배경 구멍과 팝업 조각의 윤곽선이 1픽셀의 오차도 없이 100% 일치하도록 보장합니다.
  *
  * @param {Array<{x: number, y: number}>} points - 다각형 꼭짓점 좌표 배열
  * @param {Object} [options] - 알고리즘 파라미터
- * @param {number} [options.roughness=0.06] - 찢김 거칠기 강도
- * @param {number} [options.detail=20] - 세그먼트 분할 보정값
- * @param {number} [options.seed=99] - 노이즈 시드
+ * @param {'smooth'|'geometric'} [options.tearStyle='smooth'] - 찢김 스타일 프리셋 ('smooth' | 'geometric')
  * @param {boolean} [options.closed=true] - 폐곡선 여부 (시작점과 끝점 자동 연결)
  * @returns {THREE.Shape}
  */
 export function createTornPolygonShape(points = [], options = {}) {
   const {
-    roughness = 0.06,
-    seed = 99,
+    tearStyle = 'smooth',
     closed = true
   } = options;
 
@@ -283,164 +358,7 @@ export function createTornPolygonShape(points = [], options = {}) {
     pts.pop();
   }
 
-  // 외부에서 수백 개의 미세 드래그 점이 그대로 유입될 경우를 대비한 2차 안전 균일 리샘플링 (18~28개 제어점 보장)
-  if (pts.length > 32) {
-    const totalP = pts.reduce((acc, p, idx) => {
-      const nextP = pts[(idx + 1) % pts.length];
-      return acc + Math.hypot(nextP.x - p.x, nextP.y - p.y);
-    }, 0);
-    const targetN = 24;
-    const stepL = totalP / targetN;
-    const resampled = [];
-    let curL = 0;
-    let sIdx = 0;
-    for (let i = 0; i < targetN; i++) {
-      const targetL = i * stepL;
-      while (sIdx < pts.length) {
-        const segD = Math.hypot(pts[(sIdx + 1) % pts.length].x - pts[sIdx].x, pts[(sIdx + 1) % pts.length].y - pts[sIdx].y);
-        if (curL + segD >= targetL) {
-          const remain = targetL - curL;
-          const t = segD > 1e-6 ? remain / segD : 0;
-          resampled.push({
-            x: pts[sIdx].x + t * (pts[(sIdx + 1) % pts.length].x - pts[sIdx].x),
-            y: pts[sIdx].y + t * (pts[(sIdx + 1) % pts.length].y - pts[sIdx].y)
-          });
-          break;
-        }
-        curL += segD;
-        sIdx++;
-      }
-    }
-    if (resampled.length >= 3) {
-      pts = resampled;
-    }
-  }
-
-  const n = pts.length;
-  const noise = new PseudoNoise2D(seed);
-
-  // 1. 전체 둘레(Perimeter) 및 각 꼭짓점의 누적 호 길이(Arc-length) 연산
-  const segLengths = new Float64Array(n);
-  const arcPositions = new Float64Array(n);
-  let totalPerimeter = 0;
-
-  for (let i = 0; i < n; i++) {
-    arcPositions[i] = totalPerimeter;
-    const nextIdx = (i + 1) % n;
-    const d = Math.hypot(pts[nextIdx].x - pts[i].x, pts[nextIdx].y - pts[i].y);
-    segLengths[i] = d;
-    totalPerimeter += d;
-  }
-
-  if (totalPerimeter < 1e-6) {
-    totalPerimeter = 1.0;
-  }
-
-  // 다각형 바운딩 박스 크기 추정 (변위 스케일 계수로 활용)
-  let minX = pts[0].x, maxX = pts[0].x, minY = pts[0].y, maxY = pts[0].y;
-  for (let i = 1; i < n; i++) {
-    if (pts[i].x < minX) minX = pts[i].x;
-    if (pts[i].x > maxX) maxX = pts[i].x;
-    if (pts[i].y < minY) minY = pts[i].y;
-    if (pts[i].y > maxY) maxY = pts[i].y;
-  }
-  const polyScale = Math.max(0.1, Math.min(maxX - minX, maxY - minY));
-
-  // 2. 각 꼭짓점에 전체 둘레 기준의 초저주파 사인파(1~2주기)와 극저주파 노이즈 변위 인가
-  const perturbedPoints = [];
-  for (let i = 0; i < n; i++) {
-    if (i === 0) {
-      // 단위 테스트 단언문 무결성 및 폐곡선 시작점 완벽 일치 보장
-      perturbedPoints.push({ x: pts[0].x, y: pts[0].y });
-      continue;
-    }
-
-    const prevIdx = (i - 1 + n) % n;
-    const nextIdx = (i + 1) % n;
-
-    // 꼭짓점 접선 벡터 및 외향 단위 법선 벡터
-    const tx = pts[nextIdx].x - pts[prevIdx].x;
-    const ty = pts[nextIdx].y - pts[prevIdx].y;
-    const tLen = Math.hypot(tx, ty);
-    const nx = tLen > 1e-6 ? -ty / tLen : 0;
-    const ny = tLen > 1e-6 ? tx / tLen : 0;
-
-    // 둘레 상의 정규화 파라미터 u (0.0 ~ 1.0)
-    const u = arcPositions[i] / totalPerimeter;
-
-    // 0과 1에서 부드럽게 수렴하는 스무딩 엔벨로프
-    const envelope = Math.sin(u * Math.PI);
-
-    // 둘레 전체 1.5주기의 초저주파 완만한 사인파
-    const lowFreqWave = Math.sin(u * Math.PI * 2.0 * 1.5 + (seed % 97) * 0.1);
-
-    // 극저주파 2D 노이즈 (원형 파라미터화로 0도와 360도 경계면 연속)
-    const angle = u * Math.PI * 2.0;
-    const lowFreqNoise = noise.noise2D(Math.cos(angle) * 1.3 + 1.2, Math.sin(angle) * 1.3 + 1.2);
-
-    const displacement = (lowFreqWave * 0.70 + lowFreqNoise * 0.30) * (roughness * 0.40) * polyScale * envelope;
-
-    perturbedPoints.push({
-      x: pts[i].x + nx * displacement,
-      y: pts[i].y + ny * displacement
-    });
-  }
-
-  // 3. 각 점 사이를 직선(뾰족한 가시) 대신 완만한 2차 베지에 곡선(quadraticCurveTo)으로 매끄럽게 연결
-  shape.moveTo(perturbedPoints[0].x, perturbedPoints[0].y);
-
-  for (let i = 0; i < n; i++) {
-    const nextIdx = (i + 1) % n;
-    if (!closed && i === n - 1) break;
-
-    const pCurr = perturbedPoints[i];
-    const pNext = perturbedPoints[nextIdx];
-
-    const dx = pNext.x - pCurr.x;
-    const dy = pNext.y - pCurr.y;
-    const segLen = Math.hypot(dx, dy);
-
-    // 세그먼트 중점
-    const midX = (pCurr.x + pNext.x) / 2;
-    const midY = (pCurr.y + pNext.y) / 2;
-
-    if (segLen < 1e-6) {
-      shape.lineTo(pNext.x, pNext.y);
-      continue;
-    }
-
-    // 세그먼트 법선 벡터
-    const snx = -dy / segLen;
-    const sny = dx / segLen;
-
-    // 세그먼트 중간 위치의 정규화 파라미터
-    const uCurr = arcPositions[i] / totalPerimeter;
-    const uNext = nextIdx === 0 ? 1.0 : arcPositions[nextIdx] / totalPerimeter;
-    const uMid = (uCurr + uNext) / 2;
-
-    // 세그먼트 중간의 완만한 곡선 제어점 변위 (손으로 찢은 도톰한 인화지 곡률)
-    const midWave = Math.sin(uMid * Math.PI * 2.0 * 2.0);
-    const midNoise = noise.noise2D(Math.cos(uMid * Math.PI * 2) * 1.6 + 2.0, Math.sin(uMid * Math.PI * 2) * 1.6 + 2.0);
-    const midDisp = (midWave * 0.65 + midNoise * 0.35) * (roughness * 0.20) * Math.min(segLen, polyScale * 0.3);
-
-    const cpX = midX + snx * midDisp;
-    const cpY = midY + sny * midDisp;
-
-    if (typeof shape.quadraticCurveTo === 'function') {
-      shape.quadraticCurveTo(cpX, cpY, pNext.x, pNext.y);
-    } else {
-      // 런타임 호환 폴백: 2차 베지에 4분할 선형 보간
-      for (let s = 1; s <= 4; s++) {
-        const t = s / 4;
-        const it = 1 - t;
-        const bx = it * it * pCurr.x + 2 * it * t * cpX + t * t * pNext.x;
-        const by = it * it * pCurr.y + 2 * it * t * cpY + t * t * pNext.y;
-        shape.lineTo(bx, by);
-      }
-    }
-  }
-
-  shape.closePath();
+  buildPolygonPath(shape, pts, { tearStyle, closed });
   return shape;
 }
 

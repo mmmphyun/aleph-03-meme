@@ -471,10 +471,8 @@ class PaperStudioApp {
       const img = new Image();
       img.onload = () => {
         this.showToast(`이미지 로드 완료: ${file.name}`, 'success');
-        // 원본 사진을 3D 뒤쪽 배경판에 자동 매핑 (터널북/팝업북 백드롭 연동)
-        if (this.sceneManager && typeof this.sceneManager.setBackdropImage === 'function') {
-          this.sceneManager.setBackdropImage(img, { baseWidth: 6.0, zPosition: -0.05 });
-        }
+        // 크롭 취소 시 기존 3D 씬을 100% 보존하기 위해 사전 setBackdropImage 호출 차단
+        // 오직 크롭 모달 확인(handleAddCroppedPiece) 시에만 배경이 등록됨
         this.cropTool.openWithImage(img);
       };
       img.onerror = () => {
@@ -498,10 +496,7 @@ class PaperStudioApp {
     // 1. assets/samples/sample-art.png 로드 시도
     img.onload = () => {
       this.showToast('내장 샘플 아트 이미지를 불러왔습니다.', 'info');
-      // 배경판에 샘플 아트워크 자동 매핑
-      if (this.sceneManager && typeof this.sceneManager.setBackdropImage === 'function') {
-        this.sceneManager.setBackdropImage(img, { baseWidth: 6.0, zPosition: -0.05 });
-      }
+      // 크롭 취소 시 기존 씬 보존을 위해 사전 씬 등록 차단
       this.cropTool.openWithImage(img);
     };
 
@@ -512,9 +507,7 @@ class PaperStudioApp {
       const fallbackImg = new Image();
       fallbackImg.onload = () => {
         this.showToast('절차적 내장 샘플 아트를 생성했습니다.', 'info');
-        if (this.sceneManager && typeof this.sceneManager.setBackdropImage === 'function') {
-          this.sceneManager.setBackdropImage(fallbackImg, { baseWidth: 6.0, zPosition: -0.05 });
-        }
+        // 크롭 취소 시 기존 씬 보존을 위해 사전 씬 등록 차단
         this.cropTool.openWithImage(fallbackImg);
       };
       fallbackImg.src = fallbackCanvas.toDataURL('image/png');
@@ -702,6 +695,7 @@ class PaperStudioApp {
         'polygon',
         {
           points: localPolygonPoints,
+          tearStyle: cropData.tearStyle || 'smooth',
           roughness: cropData.roughness,
           detail: 20,
           seed: cropData.seed,
@@ -780,6 +774,7 @@ class PaperStudioApp {
       id: `layer_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
       name: popupTitle,
       shapeType: cropData.shapeType,
+      tearStyle: cropData.tearStyle || 'smooth',
       zIndex: popupDepth,
       cropData: cropData,
       textureDataUrl: textureDataUrl,

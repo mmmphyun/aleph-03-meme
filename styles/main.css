@@ -815,6 +815,47 @@ input[type="range"] {
   border-radius: 50%;
 }
 
+/* 찢김 스타일 프리셋 토글 그룹 */
+.crop-tear-style-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.tear-style-btn {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  background-color: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: 6px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.tear-style-btn:hover {
+  background-color: var(--bg-elevated);
+  color: var(--text-primary);
+}
+
+.tear-style-btn.active {
+  background-color: rgba(56, 189, 248, 0.12);
+  border-color: var(--accent-cyan, #38bdf8);
+  color: #7dd3fc;
+  box-shadow: 0 0 0 1px rgba(56, 189, 248, 0.25);
+}
+
+.tear-style-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+}
+
 .crop-slider-header {
   display: flex;
   justify-content: space-between;

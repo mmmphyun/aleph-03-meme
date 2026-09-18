@@ -425,6 +425,125 @@
     </main>
   </div>
 
+  <!-- 크롭 도구 모달 (Milestone 5: 찢김 스타일 프리셋 탑재) -->
+  <div id="crop-modal-overlay" class="crop-modal-overlay">
+    <div class="crop-modal-container" role="dialog" aria-modal="true" aria-labelledby="crop-modal-title">
+      <!-- 모달 헤더 -->
+      <div class="crop-modal-header">
+        <div class="crop-modal-header-title">
+          <svg class="crop-icon" viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
+            <path d="M17 15h2V7c0-1.1-.9-2-2-2H9v2h8v8zM7 17V1H5v4H1v2h4v10c0 1.1.9 2 2 2h10v4h2v-4h4v-2H7z"/>
+          </svg>
+          <h2 id="crop-modal-title">찢긴 종이 조각 크롭 도구</h2>
+        </div>
+        <button type="button" id="btn-crop-close" class="modal-close-btn" aria-label="닫기">
+          &times;
+        </button>
+      </div>
+
+      <!-- 모달 바디: 캔버스 작업 영역 -->
+      <div class="crop-modal-body">
+        <div class="crop-canvas-wrapper" id="crop-canvas-wrapper">
+          <canvas id="crop-editor-canvas"></canvas>
+        </div>
+
+        <!-- 제어 패널 -->
+        <div class="crop-control-panel">
+          <!-- 형태 선택 -->
+          <div class="crop-panel-section">
+            <span class="crop-section-label">크롭 형태 선택</span>
+            <div class="crop-shape-toggle-group">
+              <button type="button" class="shape-toggle-btn active" data-shape="polygon">
+                <span class="shape-icon lasso-icon"></span>
+                <span>자유 올가미 찢기 (Lasso Tracing)</span>
+              </button>
+              <button type="button" class="shape-toggle-btn" data-shape="rectangle">
+                <span class="shape-icon rect-icon"></span>
+                <span>사각형 (찢긴 종이)</span>
+              </button>
+              <button type="button" class="shape-toggle-btn" data-shape="circle">
+                <span class="shape-icon circle-icon"></span>
+                <span>원형 (찢긴 스티커)</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- 찢김 스타일 프리셋 선택 (Milestone 5) -->
+          <div class="crop-panel-section">
+            <span class="crop-section-label">찢김 스타일 프리셋</span>
+            <div class="crop-tear-style-group" role="group" aria-label="찢김 스타일 선택">
+              <button type="button" class="tear-style-btn active" data-tear-style="smooth" title="완만한 베지에 곡선으로 부드럽게 찢긴 단면 연출">
+                <span class="tear-style-icon wave-icon">🌊</span>
+                <span>부드러운 유기적 찢김 (Smooth Organic)</span>
+              </button>
+              <button type="button" class="tear-style-btn" data-tear-style="geometric" title="반듯한 직선 각진 다각형으로 기하학적 오림 연출">
+                <span class="tear-style-icon angle-icon">📐</span>
+                <span>각진 기하학 오림 (Geometric Angular)</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- 찢김 거칠기 조절 -->
+          <div class="crop-panel-section">
+            <div class="crop-slider-header">
+              <label for="crop-slider-roughness">단면 거칠기 (Roughness)</label>
+              <span id="crop-val-roughness" class="crop-slider-val">0.075</span>
+            </div>
+            <input type="range" id="crop-slider-roughness" min="0.01" max="0.18" step="0.005" value="0.075">
+          </div>
+
+          <!-- 크롭 정보 HUD -->
+          <div class="crop-panel-section">
+            <span class="crop-section-label">선택 영역 정보</span>
+            <div class="crop-info-box">
+              <div class="crop-info-row">
+                <span>좌표 (X, Y):</span>
+                <span id="crop-info-pos">0, 0</span>
+              </div>
+              <div class="crop-info-row">
+                <span>크기 (W &times; H):</span>
+                <span id="crop-info-size">0 &times; 0 px</span>
+              </div>
+              <div class="crop-info-row" id="crop-info-pts-row" style="display: none;">
+                <span>트레이싱 포인트:</span>
+                <span id="crop-info-pts">0개</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- 가이드 안내 문구 -->
+          <div class="crop-guide-note" id="crop-guide-note-text">
+            마우스로 피사체 둘레를 자유롭게 둘러 그리세요.<br>
+            마우스를 떼면 자동으로 시작점과 끝점이 닫히며 자연스러운 찢김 단면이 3D 팝업 조각으로 추출됩니다.
+          </div>
+        </div>
+      </div>
+
+      <!-- 모달 풋터 액션 버튼 -->
+      <div class="crop-modal-footer">
+        <div class="footer-left">
+          <button type="button" id="btn-crop-select-all" class="secondary-btn">
+            전체 영역 선택
+          </button>
+          <button type="button" id="btn-crop-reset" class="secondary-btn">
+            기본 선택 리셋
+          </button>
+        </div>
+        <div class="footer-right">
+          <button type="button" id="btn-crop-cancel" class="cancel-btn">
+            취소
+          </button>
+          <button type="button" id="btn-crop-confirm" class="primary-action-btn">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
+              <path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/>
+            </svg>
+            <span>찢긴 조각 3D 추가</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- 메인 애플리케이션 엔트리포인트 -->
   <script type="module" src="scripts/app.js"></script>
 </body>
