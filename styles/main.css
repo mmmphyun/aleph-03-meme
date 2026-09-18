@@ -3,26 +3,30 @@
    ========================================================================== */
 
 :root {
-  --bg-primary: #0f1115;
-  --bg-secondary: #171a20;
-  --bg-surface: #20242c;
-  --bg-elevated: #292e38;
+  --bg-primary: #121110;
+  --bg-secondary: #181715;
+  --bg-surface: #211f1c;
+  --bg-elevated: #2b2824;
 
-  --border-subtle: #2d333f;
-  --border-medium: #3d4554;
-  --border-focus: #4e88ff;
+  --border-subtle: #2e2b26;
+  --border-medium: #403c35;
+  --border-focus: #c89666;
 
-  --text-primary: #f0f2f5;
-  --text-secondary: #9da7b7;
-  --text-tertiary: #6b7687;
+  --text-primary: #f3f0e8;
+  --text-secondary: #a8a297;
+  --text-tertiary: #706b63;
 
-  --accent-blue: #3b82f6;
-  --accent-blue-hover: #2563eb;
-  --accent-cyan: #06b6d4;
-  --accent-amber: #f59e0b;
-  --accent-emerald: #10b981;
+  --accent-amber: #c89666;
+  --accent-amber-hover: #b68252;
+  --accent-olive: #7c9473;
 
-  --font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji";
+  /* 호환성 변수: 블루/시안 요청 시 웜 앰버/크라프트 톤으로 수렴 */
+  --accent-blue: #c89666;
+  --accent-blue-hover: #b68252;
+  --accent-cyan: #d4a373;
+  --accent-emerald: #7c9473;
+
+  --font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
   --header-height: 56px;
   --sidebar-width: 360px;
@@ -106,12 +110,11 @@ html, body {
   gap: 6px;
   padding: 4px 10px;
   border-radius: 9999px;
-  background-color: rgba(16, 185, 129, 0.12);
-  border: 1px solid rgba(16, 185, 129, 0.3);
-  color: var(--accent-emerald);
+  background-color: rgba(124, 148, 115, 0.15);
+  border: 1px solid rgba(124, 148, 115, 0.35);
+  color: var(--accent-olive);
   font-size: 11px;
   font-weight: 600;
-  text-transform: uppercase;
   letter-spacing: 0.05em;
 }
 
@@ -119,8 +122,8 @@ html, body {
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background-color: var(--accent-emerald);
-  box-shadow: 0 0 6px var(--accent-emerald);
+  background-color: var(--accent-olive);
+  box-shadow: 0 0 6px rgba(124, 148, 115, 0.6);
 }
 
 /* 메인 작업 영역 */
@@ -138,7 +141,7 @@ html, body {
   position: relative;
   height: 100%;
   overflow: hidden;
-  background-color: #111317;
+  background-color: #141312;
 }
 
 #viewport-canvas-container {
@@ -164,7 +167,7 @@ html, body {
   align-items: center;
   gap: 8px;
   padding: 6px 10px;
-  background-color: rgba(23, 26, 32, 0.88);
+  background-color: rgba(24, 23, 21, 0.9);
   backdrop-filter: blur(14px);
   border: 1px solid var(--border-subtle);
   border-radius: 8px;
@@ -210,10 +213,10 @@ html, body {
 
 .aspect-btn.active,
 .quick-angle-btn.active {
-  background-color: var(--accent-blue);
-  color: #ffffff;
-  border-color: var(--accent-blue-hover);
-  box-shadow: 0 0 10px rgba(59, 130, 246, 0.35);
+  background-color: var(--accent-amber);
+  color: #121110;
+  border-color: var(--accent-amber-hover);
+  box-shadow: 0 0 10px rgba(200, 150, 102, 0.35);
 }
 
 /* --------------------------------------------------------------------------
@@ -324,14 +327,14 @@ html, body {
   bottom: -28px;
   left: 50%;
   transform: translateX(-50%);
-  background-color: rgba(23, 26, 32, 0.85);
+  background-color: rgba(24, 23, 21, 0.9);
   border: 1px solid var(--border-subtle);
   border-radius: 4px;
   padding: 3px 8px;
   font-family: var(--font-mono);
   font-size: 10px;
   font-weight: 600;
-  color: var(--accent-cyan);
+  color: var(--accent-amber);
   white-space: nowrap;
   letter-spacing: 0.04em;
 }
@@ -342,7 +345,7 @@ html, body {
   bottom: 16px;
   left: 16px;
   padding: 10px 14px;
-  background-color: rgba(23, 26, 32, 0.8);
+  background-color: rgba(24, 23, 21, 0.85);
   backdrop-filter: blur(8px);
   border: 1px solid var(--border-subtle);
   border-radius: 8px;
@@ -371,7 +374,7 @@ html, body {
   bottom: 16px;
   right: 16px;
   padding: 6px 12px;
-  background-color: rgba(23, 26, 32, 0.8);
+  background-color: rgba(24, 23, 21, 0.85);
   backdrop-filter: blur(8px);
   border: 1px solid var(--border-subtle);
   border-radius: 6px;
@@ -719,10 +722,10 @@ input[type="range"] {
   display: flex;
   align-items: center;
   justify-content: center;
-  background-color: #0b0d11;
+  background-color: #121110;
   background-image: 
     radial-gradient(rgba(255, 255, 255, 0.04) 1px, transparent 1px),
-    radial-gradient(rgba(255, 255, 255, 0.04) 1px, #0b0d11 1px);
+    radial-gradient(rgba(255, 255, 255, 0.04) 1px, #121110 1px);
   background-size: 24px 24px;
   background-position: 0 0, 12px 12px;
   overflow: hidden;
@@ -790,9 +793,9 @@ input[type="range"] {
 }
 
 .shape-toggle-btn.active {
-  background-color: rgba(59, 130, 246, 0.12);
-  border-color: var(--accent-blue);
-  color: #93c5fd;
+  background-color: rgba(200, 150, 102, 0.14);
+  border-color: var(--accent-amber);
+  color: var(--accent-amber);
 }
 
 .shape-icon {
@@ -843,10 +846,10 @@ input[type="range"] {
 }
 
 .tear-style-btn.active {
-  background-color: rgba(56, 189, 248, 0.12);
-  border-color: var(--accent-cyan, #38bdf8);
-  color: #7dd3fc;
-  box-shadow: 0 0 0 1px rgba(56, 189, 248, 0.25);
+  background-color: rgba(200, 150, 102, 0.14);
+  border-color: var(--accent-amber);
+  color: var(--accent-amber);
+  box-shadow: 0 0 0 1px rgba(200, 150, 102, 0.25);
 }
 
 .tear-style-icon {
@@ -1154,9 +1157,16 @@ input[type="color"]::-webkit-color-swatch {
    템플릿 관리 & JSON I/O 스타일 (Milestone 4: T03-C17 ~ C24)
    -------------------------------------------------------------------------- */
 .template-action-row {
-  display: flex;
+  display: grid;
+  grid-template-columns: 1.6fr 1fr;
   gap: 8px;
   margin-bottom: 10px;
+}
+
+.template-action-row .action-btn {
+  width: 100%;
+  white-space: nowrap;
+  padding: 8px 10px;
 }
 
 .template-list {
@@ -1259,15 +1269,15 @@ input[type="color"]::-webkit-color-swatch {
 }
 
 .template-mini-btn-primary {
-  background-color: rgba(59, 130, 246, 0.15);
-  border-color: rgba(59, 130, 246, 0.4);
-  color: #93c5fd;
+  background-color: rgba(200, 150, 102, 0.15);
+  border-color: rgba(200, 150, 102, 0.4);
+  color: var(--accent-amber);
 }
 
 .template-mini-btn-primary:hover {
-  background-color: var(--accent-blue);
-  color: #ffffff;
-  border-color: var(--accent-blue);
+  background-color: var(--accent-amber);
+  color: #121110;
+  border-color: var(--accent-amber);
 }
 
 .template-mini-btn-danger {
@@ -1300,13 +1310,13 @@ input[type="color"]::-webkit-color-swatch {
   font-size: 11px;
   color: var(--text-tertiary);
   line-height: 1.5;
-  background-color: rgba(32, 36, 44, 0.5);
+  background-color: rgba(33, 31, 28, 0.6);
   padding: 10px;
   border-radius: 6px;
-  border-left: 2px solid var(--accent-cyan);
+  border-left: 2px solid var(--accent-amber);
 }
 
 .json-status-card strong {
-  color: var(--accent-cyan);
+  color: var(--accent-amber);
 }
 

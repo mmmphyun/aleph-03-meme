@@ -16,7 +16,7 @@ export class SceneManager {
     this.options = Object.assign({
       boardWidth: 12,
       boardHeight: 12,
-      boardColor: 0x1b1e23,      // 스튜디오 차콜 매트 보드
+      boardColor: 0x181715,      // 스튜디오 웜 차콜 매트 보드
       ambientIntensity: 0.9,
       dirLightIntensity: 1.9,
       autoAnimateCamera: true
@@ -43,7 +43,7 @@ export class SceneManager {
    */
   _initScene() {
     this.scene = new THREE.Scene();
-    this.scene.background = new THREE.Color(0x131518);
+    this.scene.background = new THREE.Color(0x141312);
 
     const width = this.container.clientWidth || window.innerWidth;
     const height = this.container.clientHeight || window.innerHeight;
@@ -218,6 +218,8 @@ export class SceneManager {
     targetMesh.material.color.set(0xffffff); // 원본 이미지 색감 보존
     targetMesh.material.roughness = roughness;
     targetMesh.material.metalness = metalness;
+    targetMesh.material.transparent = true;
+    targetMesh.material.alphaTest = 0.05;
     targetMesh.material.needsUpdate = true;
 
     // 4. 그림자 투영 범위 및 바이어스/강도 유지 보장

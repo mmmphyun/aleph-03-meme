@@ -141,7 +141,7 @@ const backdropLayer = new THREE.Mesh(bgGeo, bgMat);
 backdropLayer.position.set(0, 0, 0.00);
 backdropLayer.userData = {
   id: 'layer_backdrop',
-  name: '🖼️ 배경 레이어 (오려진 원본)',
+  name: '배경 레이어',
   shapeType: 'rectangle',
   isBackdropLayer: true,
   zIndex: 0.00
@@ -150,7 +150,7 @@ backdropLayer.userData = {
 // 팝업 조각 레이어 생성 시뮬레이션
 const popupPiece = tornMesh;
 popupPiece.position.set(0.5, -0.3, 0.60);
-popupPiece.userData.name = '✂️ 팝업 조각 (인물/물체)';
+popupPiece.userData.name = '입체 팝업 조각';
 popupPiece.userData.zIndex = 0.60;
 
 mockSceneManager.addPaperMesh(backdropLayer, 0.00);

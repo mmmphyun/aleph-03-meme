@@ -292,12 +292,12 @@ export function buildPolygonPath(pathTarget, points, options = {}) {
   pathTarget.moveTo(pts[0].x, pts[0].y);
 
   if (tearStyle === 'geometric') {
-    // 📐 각진 기하학 오림: 반듯한 직선 각진 다각형으로 렌더링
+    // 각진 기하학 오림: 반듯한 직선 각진 다각형으로 렌더링
     for (let i = 1; i < n; i++) {
       pathTarget.lineTo(pts[i].x, pts[i].y);
     }
   } else {
-    // 🌊 부드러운 유기적 찢김: 완만한 Catmull-Rom 3차 베지에 스플라인으로 렌더링
+    // 부드러운 유기적 찢김: 완만한 Catmull-Rom 3차 베지에 스플라인으로 렌더링
     for (let i = 0; i < n; i++) {
       if (!closed && i === n - 1) break;
 

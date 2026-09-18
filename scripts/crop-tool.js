@@ -142,34 +142,34 @@ export class CropTool {
             <div class="crop-control-panel">
               <!-- 형태 선택 -->
               <div class="crop-panel-section">
-                <span class="crop-section-label">크롭 형태 선택</span>
+                <span class="crop-section-label">모양 선택</span>
                 <div class="crop-shape-toggle-group">
                   <button type="button" class="shape-toggle-btn active" data-shape="polygon">
                     <span class="shape-icon lasso-icon"></span>
-                    <span>자유 올가미 찢기 (Lasso Tracing)</span>
+                    <span>자유 올가미</span>
                   </button>
                   <button type="button" class="shape-toggle-btn" data-shape="rectangle">
                     <span class="shape-icon rect-icon"></span>
-                    <span>사각형 (찢긴 종이)</span>
+                    <span>사각형 종이</span>
                   </button>
                   <button type="button" class="shape-toggle-btn" data-shape="circle">
                     <span class="shape-icon circle-icon"></span>
-                    <span>원형 (찢긴 스티커)</span>
+                    <span>원형 스티커</span>
                   </button>
                 </div>
               </div>
 
               <!-- 찢김 스타일 프리셋 선택 (Milestone 5) -->
               <div class="crop-panel-section">
-                <span class="crop-section-label">찢김 스타일 프리셋</span>
-                <div class="crop-tear-style-group" role="group" aria-label="찢김 스타일 선택">
-                  <button type="button" class="tear-style-btn active" data-tear-style="smooth" title="완만한 베지에 곡선으로 부드럽게 찢긴 단면 연출">
-                    <span class="tear-style-icon wave-icon">🌊</span>
-                    <span>부드러운 유기적 찢김 (Smooth Organic)</span>
+                <span class="crop-section-label">단면 형태</span>
+                <div class="crop-tear-style-group" role="group" aria-label="단면 형태 선택">
+                  <button type="button" class="tear-style-btn active" data-tear-style="smooth" title="완만한 곡선으로 부드럽게 찢긴 단면 연출">
+                    <span class="tear-style-icon wave-icon"></span>
+                    <span>부드러운 곡선 단면</span>
                   </button>
-                  <button type="button" class="tear-style-btn" data-tear-style="geometric" title="반듯한 직선 각진 다각형으로 기하학적 오림 연출">
-                    <span class="tear-style-icon angle-icon">📐</span>
-                    <span>각진 기하학 오림 (Geometric Angular)</span>
+                  <button type="button" class="tear-style-btn" data-tear-style="geometric" title="직선으로 각지게 잘라낸 단면 연출">
+                    <span class="tear-style-icon angle-icon"></span>
+                    <span>각진 직선 단면</span>
                   </button>
                 </div>
               </div>
@@ -177,7 +177,7 @@ export class CropTool {
               <!-- 찢김 거칠기 조절 -->
               <div class="crop-panel-section">
                 <div class="crop-slider-header">
-                  <label for="crop-slider-roughness">단면 거칠기 (Roughness)</label>
+                  <label for="crop-slider-roughness">단면 거칠기</label>
                   <span id="crop-val-roughness" class="crop-slider-val">0.075</span>
                 </div>
                 <input type="range" id="crop-slider-roughness" min="0.01" max="0.18" step="0.005" value="0.075">
@@ -188,15 +188,15 @@ export class CropTool {
                 <span class="crop-section-label">선택 영역 정보</span>
                 <div class="crop-info-box">
                   <div class="crop-info-row">
-                    <span>좌표 (X, Y):</span>
+                    <span>좌표:</span>
                     <span id="crop-info-pos">0, 0</span>
                   </div>
                   <div class="crop-info-row">
-                    <span>크기 (W &times; H):</span>
+                    <span>크기:</span>
                     <span id="crop-info-size">0 &times; 0 px</span>
                   </div>
                   <div class="crop-info-row" id="crop-info-pts-row" style="display: none;">
-                    <span>트레이싱 포인트:</span>
+                    <span>지정 좌표 수:</span>
                     <span id="crop-info-pts">0개</span>
                   </div>
                 </div>
@@ -204,8 +204,8 @@ export class CropTool {
 
               <!-- 가이드 안내 문구 -->
               <div class="crop-guide-note" id="crop-guide-note-text">
-                마우스로 피사체 둘레를 자유롭게 둘러 그리세요.<br>
-                마우스를 떼면 자동으로 시작점과 끝점이 닫히며 자연스러운 찢김 단면이 3D 팝업 조각으로 추출됩니다.
+                자르고 싶은 영역의 둘레를 마우스로 따라 그립니다.<br>
+                마우스 버튼을 놓으면 선이 자동으로 이어지며 종이를 찢어낸 형태의 입체 조각이 만들어집니다.
               </div>
             </div>
           </div>
@@ -217,7 +217,7 @@ export class CropTool {
                 전체 영역 선택
               </button>
               <button type="button" id="btn-crop-reset" class="secondary-btn">
-                기본 선택 리셋
+                선택 영역 초기화
               </button>
             </div>
             <div class="footer-right">
@@ -228,7 +228,7 @@ export class CropTool {
                 <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
                   <path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/>
                 </svg>
-                <span>찢긴 조각 3D 추가</span>
+                <span>조각 추가</span>
               </button>
             </div>
           </div>
@@ -277,11 +277,11 @@ export class CropTool {
         const guideEl = document.getElementById('crop-guide-note-text');
         if (guideEl) {
           if (this.shapeType === 'polygon') {
-            guideEl.innerHTML = '마우스로 피사체 둘레를 자유롭게 둘러 그리세요.<br>마우스를 떼면 자동으로 시작점과 끝점이 닫히며 자연스러운 찢김 단면이 3D 팝업 조각으로 추출됩니다.';
+            guideEl.innerHTML = '자르고 싶은 영역의 둘레를 마우스로 따라 그립니다.<br>마우스 버튼을 놓으면 선이 자동으로 이어지며 종이를 찢어낸 형태의 입체 조각이 만들어집니다.';
           } else if (this.shapeType === 'circle') {
-            guideEl.innerHTML = '드래그하여 원형 찢긴 스티커 영역을 선택하세요.<br>원형 둘레가 자연스러운 섬유 노이즈와 함께 찢겨져 3D 씬에 추가됩니다.';
+            guideEl.innerHTML = '원형 종이 스티커로 만들 영역을 드래그하여 선택합니다.<br>원형 둘레를 따라 자연스러운 단면으로 잘려 입체 조각으로 추가됩니다.';
           } else {
-            guideEl.innerHTML = '드래그하여 사각형 찢긴 종이 영역을 선택하세요.<br>선택된 4개 변이 거칠게 찢겨지며 3D 씬에 새로운 레이어로 추가됩니다.';
+            guideEl.innerHTML = '사각형 종이로 만들 영역을 드래그하여 선택합니다.<br>네 모서리와 변을 따라 찢긴 단면으로 잘려 입체 조각으로 추가됩니다.';
           }
         }
 
@@ -637,7 +637,7 @@ export class CropTool {
 
     // 4. 선택 영역 테두리 가이드라인 시각화
     ctx.lineWidth = 2.5;
-    ctx.strokeStyle = '#38bdf8';
+    ctx.strokeStyle = '#c89666';
     ctx.setLineDash([6, 4]);
 
     ctx.beginPath();
@@ -658,14 +658,14 @@ export class CropTool {
         if (this.lassoPoints.length > 0) {
           const first = this.lassoPoints[0];
           ctx.setLineDash([]);
-          ctx.fillStyle = '#22c55e'; // 시작점 녹색
+          ctx.fillStyle = '#7c9473'; // 시작점 세이지 그린
           ctx.beginPath();
           ctx.arc(first.x * w, first.y * h, 4.5, 0, Math.PI * 2);
           ctx.fill();
 
           if (this.isDragging) {
             const last = this.lassoPoints[this.lassoPoints.length - 1];
-            ctx.fillStyle = '#f43f5e'; // 드래그 중인 끝점 적색
+            ctx.fillStyle = '#e07a5f'; // 드래그 중인 끝점 테라코타
             ctx.beginPath();
             ctx.arc(last.x * w, last.y * h, 4.5, 0, Math.PI * 2);
             ctx.fill();
@@ -680,7 +680,7 @@ export class CropTool {
       ctx.stroke();
 
       ctx.setLineDash([]);
-      ctx.strokeStyle = 'rgba(255, 255, 255, 0.6)';
+      ctx.strokeStyle = 'rgba(243, 240, 232, 0.6)';
       ctx.lineWidth = 1;
       ctx.beginPath();
       ctx.moveTo(cx - 8, cy);
@@ -706,7 +706,7 @@ export class CropTool {
   _drawCornerHandles(ctx, x, y, w, h) {
     const handleSize = 7;
     ctx.fillStyle = '#ffffff';
-    ctx.strokeStyle = '#2563eb';
+    ctx.strokeStyle = '#c89666';
     ctx.lineWidth = 2;
     ctx.setLineDash([]);
 

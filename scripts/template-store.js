@@ -17,7 +17,7 @@ const STORAGE_KEY = 'paper_studio_templates_v1';
 export const DEFAULT_PRESETS = [
   {
     id: 'preset_classic_box_1x1',
-    name: '클래식 섀도 박스 (1:1)',
+    name: '클래식 섀도 박스 1:1',
     isPreset: true,
     createdAt: '2026-09-17T00:00:00.000Z',
     updatedAt: '2026-09-17T00:00:00.000Z',
@@ -28,7 +28,7 @@ export const DEFAULT_PRESETS = [
       target: { x: 0.0, y: 0.0, z: 0.0 }
     },
     text: {
-      text: '찢겨진 종이 위에 남긴\n영감의 한 줄 ✂️✨',
+      text: '손끝으로 찢어낸 종이에\n새겨 넣은 생각 한 줄',
       fontSize: 42,
       fontColor: '#1a1c20',
       paperColor: '#fbf8ef',
@@ -75,7 +75,7 @@ export const DEFAULT_PRESETS = [
   },
   {
     id: 'preset_minimal_feed_4x5',
-    name: '미니멀 인스타 피드 (4:5)',
+    name: '미니멀 피드 4:5',
     isPreset: true,
     createdAt: '2026-09-17T00:00:00.000Z',
     updatedAt: '2026-09-17T00:00:00.000Z',
@@ -86,7 +86,7 @@ export const DEFAULT_PRESETS = [
       target: { x: 0.0, y: 0.0, z: 0.0 }
     },
     text: {
-      text: '빛과 그림자가 빚어낸\n레이어의 미학 📐🖤',
+      text: '빛과 그림자가 만들어낸\n종이의 단면과 깊이',
       fontSize: 46,
       fontColor: '#ffffff',
       paperColor: '#1e272e',
@@ -148,7 +148,7 @@ export const DEFAULT_PRESETS = [
   },
   {
     id: 'preset_mobile_reels_9x16',
-    name: '모바일 릴스 & 스토리 (9:16)',
+    name: '모바일 릴스 및 스토리 9:16',
     isPreset: true,
     createdAt: '2026-09-17T00:00:00.000Z',
     updatedAt: '2026-09-17T00:00:00.000Z',
@@ -159,7 +159,7 @@ export const DEFAULT_PRESETS = [
       target: { x: 0.0, y: 0.0, z: 0.0 }
     },
     text: {
-      text: 'KEEP CUTTING,\nKEEP DREAMING ✂️',
+      text: '종이를 오려내어\n이어가는 상상',
       fontSize: 40,
       fontColor: '#2d3436',
       paperColor: '#fdcb6e',

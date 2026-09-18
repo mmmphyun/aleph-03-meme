@@ -17,6 +17,34 @@ import { Exporter } from './exporter.js';
 import { TemplateStore } from './template-store.js';
 import { JSONValidator } from './json-validator.js';
 
+/**
+ * 캔버스 또는 이미지 엘리먼트 내 투명(알파 < 240) 픽셀 존재 여부 검사 (T03-C14)
+ * @param {HTMLCanvasElement|HTMLImageElement} source
+ * @returns {boolean}
+ */
+export function checkImageTransparency(source) {
+  if (!source) return false;
+  if (typeof document === 'undefined') return false;
+  try {
+    const canvas = document.createElement('canvas');
+    const w = Math.min(64, source.naturalWidth || source.width || 64);
+    const h = Math.min(64, source.naturalHeight || source.height || 64);
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    ctx.drawImage(source, 0, 0, w, h);
+    const imgData = ctx.getImageData(0, 0, w, h).data;
+    for (let i = 3; i < imgData.length; i += 4) {
+      if (imgData[i] < 240) {
+        return true;
+      }
+    }
+  } catch {
+    return false;
+  }
+  return false;
+}
+
 class PaperStudioApp {
   constructor() {
     this.container = document.getElementById('viewport-canvas-container');
@@ -287,7 +315,7 @@ class PaperStudioApp {
           this.syncMemoUIFromEngine();
           this.selectLayer(this.memoEngine.mesh);
           this.updateLayerListUI();
-          this.showToast('📝 텍스트 메모지가 씬에 배치되었습니다.', 'success');
+          this.showToast('메모지가 화면에 배치되었습니다.', 'success');
         }
       });
     }
@@ -589,6 +617,7 @@ class PaperStudioApp {
 
     // 4. 구멍 뚫린 배경 사진의 독립 3D 메쉬 레이어 (Backdrop Layer, 기본 Z = 0.00) 생성 또는 갱신
     if (cropData.punchedBgCanvas) {
+      const isTransparentPng = this.cropTool?.currentImage ? checkImageTransparency(this.cropTool.currentImage) : false;
       const bgTexture = new THREE.CanvasTexture(cropData.punchedBgCanvas);
       bgTexture.colorSpace = THREE.SRGBColorSpace;
       bgTexture.minFilter = THREE.LinearFilter;
@@ -603,7 +632,7 @@ class PaperStudioApp {
           roughness: 0.88,
           metalness: 0.02,
           transparent: true,
-          alphaTest: 0.001,
+          alphaTest: 0.05,
           side: THREE.FrontSide
         });
 
@@ -628,11 +657,15 @@ class PaperStudioApp {
         bgMesh.add(borderMesh);
         bgMesh.filmBorderMesh = borderMesh;
 
+        // 원본 이미지가 투명 채널을 가진 경우 뒤쪽 매트 보드가 비치도록 흰색 보더 숨김 처리 (T03-C14)
+        borderMesh.visible = !isTransparentPng;
+
         bgMesh.userData = {
           id: 'layer_backdrop',
-          name: '🖼️ 배경 레이어 (오려진 원본)',
+          name: '배경 레이어',
           shapeType: 'rectangle',
           isBackdropLayer: true,
+          isTransparentPng: isTransparentPng,
           width: bgWidth,
           height: bgHeight,
           roughness: 0.88,
@@ -649,8 +682,14 @@ class PaperStudioApp {
           this.backdropLayerMesh.material.map.dispose();
         }
         this.backdropLayerMesh.material.map = bgTexture;
+        this.backdropLayerMesh.material.transparent = true;
+        this.backdropLayerMesh.material.alphaTest = 0.05;
         this.backdropLayerMesh.material.needsUpdate = true;
         this.backdropLayerMesh.userData.textureDataUrl = cropData.punchedBgCanvas.toDataURL('image/png');
+        this.backdropLayerMesh.userData.isTransparentPng = isTransparentPng;
+        if (this.backdropLayerMesh.filmBorderMesh) {
+          this.backdropLayerMesh.filmBorderMesh.visible = !isTransparentPng;
+        }
       }
 
       // 배경 뒤 액자 내부의 어두운 매트 보드(Z = -0.15) 설정: 구멍 난 곳을 통해 안쪽 깊은 공간이 들여다보이도록 함
@@ -767,7 +806,7 @@ class PaperStudioApp {
 
     // 7. 메타데이터 부착
     const popupCount = this.layers.filter(l => !l.userData.isBackdropLayer).length + 1;
-    const popupTitle = popupCount === 1 ? '✂️ 팝업 조각 (인물/물체)' : `✂️ 팝업 조각 #${popupCount}`;
+    const popupTitle = popupCount === 1 ? '입체 팝업 조각' : `입체 팝업 조각 #${popupCount}`;
 
     const textureDataUrl = cropData.cropCanvas ? cropData.cropCanvas.toDataURL('image/png') : null;
     mesh.userData = {
@@ -780,7 +819,8 @@ class PaperStudioApp {
       textureDataUrl: textureDataUrl,
       width: pieceW,
       height: pieceH,
-      radius: cropData.radius,
+      radius: cropData.shapeType === 'circle' ? Number((Math.min(pieceW, pieceH) / 2).toFixed(2)) : cropData.radius,
+      points: cropData.points || null,
       roughness: cropData.roughness,
       seed: cropData.seed,
       color: null
@@ -794,7 +834,7 @@ class PaperStudioApp {
     this.selectLayer(mesh);
     this.updateLayerListUI();
 
-    this.showToast(`터널북 팝업 조각 생성 완료 (Z = ${popupDepth.toFixed(2)})`, 'success');
+    this.showToast(`입체 조각 생성 완료 (돌출 깊이 ${popupDepth.toFixed(2)})`, 'success');
   }
 
   /**
@@ -1053,13 +1093,11 @@ class PaperStudioApp {
       const isMemo = mesh.userData.isMemoLabel || (this.memoEngine && mesh === this.memoEngine.mesh);
       const isCircle = mesh.userData.shapeType === 'circle';
       const shapeIcon = isMemo
-        ? '📝'
+        ? 'T'
         : (isBackdrop
-          ? '🖼️'
-          : (mesh.userData.name && mesh.userData.name.includes('✂️')
-            ? '✂️'
-            : (isCircle ? '●' : '■')));
-      const layerTitle = isMemo ? '📝 텍스트 메모지' : (mesh.userData.name || '종이 조각');
+          ? 'BG'
+          : (isCircle ? '●' : '■'));
+      const layerTitle = isMemo ? '텍스트 메모지' : (mesh.userData.name || '종이 조각');
 
       li.innerHTML = `
         <div class="layer-badge">${shapeIcon}</div>
@@ -1126,14 +1164,16 @@ class PaperStudioApp {
         id: ud.id || `layer_${Date.now()}_${index}`,
         name: ud.name || `종이 조각 #${index + 1}`,
         shapeType: ud.shapeType || 'rectangle',
+        tearStyle: ud.tearStyle || 'smooth',
         isBackdropLayer: Boolean(ud.isBackdropLayer),
+        isTransparentPng: Boolean(ud.isTransparentPng),
         isMemoLabel: Boolean(ud.isMemoLabel || (this.memoEngine && mesh === this.memoEngine.mesh)),
-        width: ud.cropData?.width || ud.width || 4.0,
-        height: ud.cropData?.height || ud.height || 2.8,
-        radius: ud.cropData?.radius || ud.radius || 1.25,
-        points: ud.cropData?.points || ud.points || null,
-        roughness: ud.cropData?.roughness || ud.roughness || this.roughness,
-        seed: ud.cropData?.seed || ud.seed || (42 + index * 137),
+        width: Number((ud.width ?? ud.cropData?.width ?? 4.0).toFixed(2)),
+        height: Number((ud.height ?? ud.cropData?.height ?? 2.8).toFixed(2)),
+        radius: Number((ud.radius ?? ud.cropData?.radius ?? 1.25).toFixed(2)),
+        points: ud.points || ud.cropData?.points || null,
+        roughness: ud.roughness ?? ud.cropData?.roughness ?? this.roughness,
+        seed: ud.seed ?? ud.cropData?.seed ?? (42 + index * 137),
         color: ud.color || (mesh.material?.color ? `#${mesh.material.color.getHexString()}` : '#ede8dc'),
         textureDataUrl: ud.textureDataUrl || null,
         position: {
@@ -1209,18 +1249,54 @@ class PaperStudioApp {
 
     let mesh;
     if (layerData.isBackdropLayer || layerData.id === 'layer_backdrop') {
-      const bgGeo = new THREE.PlaneGeometry(layerData.width || 6.0, layerData.height || 6.0);
+      const bgW = layerData.width || 6.0;
+      const bgH = layerData.height || 6.0;
+      const bgGeo = new THREE.PlaneGeometry(bgW, bgH);
       const bgMat = new THREE.MeshStandardMaterial(Object.assign({
         roughness: 0.88,
         metalness: 0.02,
         transparent: true,
-        alphaTest: 0.001,
+        alphaTest: 0.05,
         side: THREE.FrontSide
       }, matOptions));
       mesh = new THREE.Mesh(bgGeo, bgMat);
       mesh.castShadow = true;
       mesh.receiveShadow = true;
+
+      // 필름 사진 흰색 외곽 인화지 보더 (Film Photo Border) 복원 (T03-C14)
+      const borderMargin = 0.22;
+      const borderGeo = new THREE.PlaneGeometry(bgW + borderMargin, bgH + borderMargin);
+      const borderMat = new THREE.MeshStandardMaterial({
+        color: 0xfcfbf7,
+        roughness: 0.92,
+        metalness: 0.01,
+        side: THREE.FrontSide
+      });
+      const borderMesh = new THREE.Mesh(borderGeo, borderMat);
+      borderMesh.position.set(0, 0, -0.002);
+      borderMesh.castShadow = true;
+      borderMesh.receiveShadow = true;
+      mesh.add(borderMesh);
+      mesh.filmBorderMesh = borderMesh;
+
+      // 투명 PNG인 경우 매트 보드가 비치도록 흰색 보더 숨김 처리
+      const isTransparent = Boolean(layerData.isTransparentPng || (cropCanvas && checkImageTransparency(cropCanvas)));
+      borderMesh.visible = !isTransparent;
+
       this.backdropLayerMesh = mesh;
+
+      // 배경 뒤 액자 내부의 어두운 매트 보드(Z = -0.15) 설정
+      if (this.sceneManager?.boardMesh) {
+        this.sceneManager.boardMesh.position?.set?.(0, 0, -0.15);
+        if (this.sceneManager.boardMesh.material) {
+          if (this.sceneManager.boardMesh.material.map) {
+            this.sceneManager.boardMesh.material.map = null;
+          }
+          this.sceneManager.boardMesh.material.color?.set?.(0x14161a);
+          this.sceneManager.boardMesh.material.roughness = 0.95;
+          this.sceneManager.boardMesh.material.needsUpdate = true;
+        }
+      }
     } else if (layerData.shapeType === 'polygon' && Array.isArray(layerData.points) && layerData.points.length >= 3) {
       const pieceW = layerData.width || 4.0;
       const pieceH = layerData.height || 2.8;
@@ -1232,6 +1308,7 @@ class PaperStudioApp {
         'polygon',
         {
           points: localPolygonPoints,
+          tearStyle: layerData.tearStyle || 'smooth',
           roughness: layerData.roughness || 0.08,
           detail: 20,
           seed: layerData.seed || 42,
@@ -1285,9 +1362,13 @@ class PaperStudioApp {
       id: layerData.id || `layer_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
       name: layerData.name || '종이 조각',
       shapeType: layerData.shapeType || 'rectangle',
+      tearStyle: layerData.tearStyle || 'smooth',
+      isBackdropLayer: Boolean(layerData.isBackdropLayer || layerData.id === 'layer_backdrop'),
+      isTransparentPng: Boolean(layerData.isTransparentPng),
       width: layerData.width,
       height: layerData.height,
       radius: layerData.radius,
+      points: layerData.points || null,
       roughness: layerData.roughness,
       seed: layerData.seed,
       color: layerData.color,
@@ -1296,10 +1377,12 @@ class PaperStudioApp {
       cropData: cropCanvas ? {
         cropCanvas,
         shapeType: layerData.shapeType,
+        tearStyle: layerData.tearStyle || 'smooth',
         width: layerData.width,
         height: layerData.height,
         radius: layerData.radius,
         roughness: layerData.roughness,
+        points: layerData.points || null,
         seed: layerData.seed
       } : null
     };
@@ -1370,6 +1453,7 @@ class PaperStudioApp {
     // 4. 기존 종이 레이어 비우고 새 레이어 비동기 재구축
     this.sceneManager.clearPaperLayers();
     this.layers = [];
+    this.backdropLayerMesh = null;
 
     if (Array.isArray(snapshot.layers)) {
       for (const layerData of snapshot.layers) {
@@ -1414,7 +1498,7 @@ class PaperStudioApp {
         const snapshot = this.getCurrentSceneSnapshot(name);
         const created = this.templateStore.create(snapshot);
         this.updateTemplateListUI();
-        this.showToast(`템플릿 '${created.name}'이(가) 저장되었습니다. (localStorage 영속화)`, 'success');
+        this.showToast(`템플릿 '${created.name}'이(가) 저장되었습니다.`, 'success');
       });
     }
 
@@ -1446,7 +1530,7 @@ class PaperStudioApp {
 
     listEl.innerHTML = '';
     if (templates.length === 0) {
-      listEl.innerHTML = '<li class="template-empty-msg">저장된 템플릿이 없습니다. [+ 현재 씬 템플릿 저장] 버튼을 눌러 추가하세요.</li>';
+      listEl.innerHTML = '<li class="template-empty-msg">저장된 템플릿이 없습니다. 상단의 [현재 상태 저장] 버튼을 눌러 추가하세요.</li>';
       return;
     }
 
@@ -1500,11 +1584,11 @@ class PaperStudioApp {
       const overwriteBtn = li.querySelector('[data-action="overwrite"]');
       if (overwriteBtn) {
         overwriteBtn.addEventListener('click', () => {
-          if (confirm(`'${tpl.name}' 템플릿을 현재 3D 씬 상태로 덮어쓰시겠습니까?`)) {
+          if (confirm(`'${tpl.name}' 템플릿을 현재 상태로 덮어쓰시겠습니까?`)) {
             const snapshot = this.getCurrentSceneSnapshot(tpl.name);
             this.templateStore.update(tpl.id, snapshot);
             this.updateTemplateListUI();
-            this.showToast(`'${tpl.name}' 템플릿이 현재 씬으로 수정(덮어쓰기)되었습니다.`, 'success');
+            this.showToast(`'${tpl.name}' 템플릿에 현재 상태를 덮어썼습니다.`, 'success');
           }
         });
       }
@@ -1526,7 +1610,7 @@ class PaperStudioApp {
       const delBtn = li.querySelector('[data-action="delete"]');
       if (delBtn) {
         delBtn.addEventListener('click', () => {
-          if (confirm(`'${tpl.name}' 템플릿을 삭제하시겠습니까? (다른 템플릿에는 영향 없음)`)) {
+          if (confirm(`'${tpl.name}' 템플릿을 삭제하시겠습니까?`)) {
             this.templateStore.delete(tpl.id);
             this.updateTemplateListUI();
             this.showToast(`'${tpl.name}' 템플릿이 삭제되었습니다.`, 'info');
@@ -1615,7 +1699,7 @@ class PaperStudioApp {
             }
 
             await this.applySceneSnapshot(data);
-            this.showToast('정상 JSON 검증 완료: 템플릿 목록과 3D 씬이 성공적으로 복원되었습니다.', 'success');
+            this.showToast('정상 파일 확인 완료: 템플릿 목록과 작업 화면이 복원되었습니다.', 'success');
           } catch (err) {
             console.error('[PaperStudioApp] JSON 데이터 복원 중 오류:', err);
             this.showToast('데이터 복원 적용 중 오류가 발생했습니다.', 'error');
@@ -1662,7 +1746,7 @@ class PaperStudioApp {
             this.updateTemplateListUI();
           }
           await this.applySceneSnapshot(data);
-          this.showToast('정상 JSON 검증 완료: 템플릿 목록과 3D 씬이 성공적으로 복원되었습니다.', 'success');
+          this.showToast('정상 파일 확인 완료: 템플릿 목록과 작업 화면이 복원되었습니다.', 'success');
           resolve(result);
         } catch (err) {
           console.error('[PaperStudioApp] JSON 데이터 복원 중 오류:', err);
@@ -1713,8 +1797,12 @@ class PaperStudioApp {
   }
 }
 
+export { PaperStudioApp };
+
 // 브라우저 DOM 로드 시 앱 인스턴스 생성
-window.addEventListener('DOMContentLoaded', () => {
-  const app = new PaperStudioApp();
-  window.__studioApp = app;
-});
+if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
+  window.addEventListener('DOMContentLoaded', () => {
+    const app = new PaperStudioApp();
+    window.__studioApp = app;
+  });
+}

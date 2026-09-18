@@ -22,7 +22,7 @@ export class MemoLabelEngine {
 
     // 라벨 상태 설정 (기본값: 텍스트에 맞춘 동적 콤팩트 크기)
     this.state = {
-      text: '찢겨진 종이 위에 남긴\n영감의 한 줄 ✂️✨',
+      text: '손끝으로 찢어낸 종이에\n새겨 넣은 생각 한 줄',
       fontSize: 34,             // 캔버스 픽셀 기준 (18 ~ 84)
       fontColor: '#1a1c20',     // 폰트 색상
       paperColor: '#fbf8ef',    // 메모지 배경 톤
@@ -95,19 +95,19 @@ export class MemoLabelEngine {
     const lineCount = Math.max(1, lines.length);
     const totalTextHeight = lineCount * lineHeight;
 
-    // 상하좌우 20% 여백(Padding)만 남기고 딱 맞게 감싸는 여백 픽셀 (텍스트가 약 70% 차지하도록 1.4배)
-    const paddedPixelW = Math.max(24, maxLineWidth * 1.40);
-    const paddedPixelH = Math.max(24, totalTextHeight * 1.40);
+    // 상하좌우 여백: 메모지 폭 = 텍스트 최대 폭 + 여백, 메모지 높이 = 텍스트 전체 높이 + 여백
+    const paddingX = Math.round(fontSize * 1.0);
+    const paddingY = Math.round(fontSize * 0.7);
+    const paddedPixelW = Math.max(60, maxLineWidth + paddingX * 2);
+    const paddedPixelH = Math.max(40, totalTextHeight + paddingY * 2);
 
-    // 캔버스 픽셀을 3D 월드 단위로 정밀 환산
-    // "KING KEV" 2줄 ("KING\nKEV", 4글자, 2줄) 기준:
-    // paddedPixelW ≈ 130px -> 월드 폭 약 1.4
-    // paddedPixelH ≈ 129px -> 월드 높이 약 0.8
-    const rawWorldW = paddedPixelW * 0.0105;
-    const rawWorldH = paddedPixelH * 0.0062;
+    // 캔버스 픽셀을 3D 월드 단위로 정밀 환산 (동일 비율 계수 적용하여 비틀림 방지 및 정방향 연동)
+    const worldScaleFactor = 0.0075;
+    const rawWorldW = paddedPixelW * worldScaleFactor;
+    const rawWorldH = paddedPixelH * worldScaleFactor;
 
-    this.computedWidth = Number(Math.max(0.8, Math.min(4.5, rawWorldW)).toFixed(2));
-    this.computedHeight = Number(Math.max(0.5, Math.min(3.2, rawWorldH)).toFixed(2));
+    this.computedWidth = Number(Math.max(0.6, rawWorldW).toFixed(2));
+    this.computedHeight = Number(Math.max(0.4, rawWorldH).toFixed(2));
 
     this.state.width = this.computedWidth;
     this.state.height = this.computedHeight;
@@ -156,7 +156,7 @@ export class MemoLabelEngine {
 
     this.mesh.userData = {
       id: 'layer_memo_label',
-      name: '📝 텍스트 메모지',
+      name: '텍스트 메모지',
       isMemoLabel: true,
       shapeType: 'rectangle',
       width: this.computedWidth,
@@ -209,13 +209,34 @@ export class MemoLabelEngine {
   renderCanvas() {
     this._updateTightDimensions();
 
-    const targetW = this.computedWidth;
-    const targetH = this.computedHeight;
-    const aspect = targetW / targetH;
+    const text = this.state.text !== undefined && this.state.text !== null ? String(this.state.text) : '';
+    const fontSize = this.state.fontSize || 34;
+    const lines = text.split('\n');
 
-    // 1. 캔버스 해상도를 3D 종이 비율에 완벽히 동기화 (텍스처 왜곡/비틀림 원천 방지)
-    const baseH = 512;
-    const baseW = Math.max(256, Math.min(1536, Math.round(baseH * aspect)));
+    this.ctx.save();
+    this.ctx.font = `600 ${fontSize}px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Noto Sans KR", sans-serif`;
+    let maxLineWidth = 0;
+    for (const line of lines) {
+      const metrics = this.ctx.measureText(line);
+      if (metrics.width > maxLineWidth) {
+        maxLineWidth = metrics.width;
+      }
+    }
+    this.ctx.restore();
+
+    const lineHeight = Math.round(fontSize * 1.35);
+    const totalTextHeight = Math.max(1, lines.length) * lineHeight;
+
+    const paddingX = Math.round(fontSize * 1.0);
+    const paddingY = Math.round(fontSize * 0.7);
+    const paddedPixelW = Math.max(60, maxLineWidth + paddingX * 2);
+    const paddedPixelH = Math.max(40, totalTextHeight + paddingY * 2);
+
+    // 1. 선명한 텍스처를 위한 고해상도(2x) 캔버스 버퍼
+    const dpr = 2;
+    const baseW = Math.round(paddedPixelW * dpr);
+    const baseH = Math.round(paddedPixelH * dpr);
+
     if (this.canvas.width !== baseW || this.canvas.height !== baseH) {
       this.canvas.width = baseW;
       this.canvas.height = baseH;
@@ -238,8 +259,8 @@ export class MemoLabelEngine {
 
     // 4. 은은한 메모지 모눈/가이드 라인 (정사각형 격자)
     ctx.strokeStyle = 'rgba(0, 0, 0, 0.035)';
-    ctx.lineWidth = 1;
-    const gridStep = 44;
+    ctx.lineWidth = 1 * dpr;
+    const gridStep = 44 * dpr;
     for (let x = gridStep; x < w; x += gridStep) {
       ctx.beginPath();
       ctx.moveTo(x, 0);
@@ -253,8 +274,8 @@ export class MemoLabelEngine {
       ctx.stroke();
     }
 
-    // 5. 텍스트 렌더링 (상하좌우 20% 여백 영역을 고려한 중앙 맞춤)
-    this._drawWrappedText(ctx, w, h);
+    // 5. 사용자가 지정한 fontSize를 존중하여 정방향 렌더링 (while 축소 루프 원천 제거)
+    this._drawWrappedText(ctx, w, h, dpr);
 
     // 6. 3D 메쉬 스케일 즉시 동기화 (지오메트리 재생성 없는 안전한 scale.set으로 무한 루프 원천 방지)
     if (this.mesh) {
@@ -287,69 +308,27 @@ export class MemoLabelEngine {
   }
 
   /**
-   * 긴 문장 자동 줄바꿈(Word wrap) 및 이모지 지원 텍스트 렌더링
-   * 상하좌우 20% 여백(Padding)을 남기고 중앙 영역에 딱 맞게 정렬
+   * 사용자 폰트 크기를 유지하며 줄바꿈 및 이모지를 지원하는 텍스트 렌더링
    * @private
    * @param {CanvasRenderingContext2D} ctx
    * @param {number} w
    * @param {number} h
+   * @param {number} [dpr=1]
    */
-  _drawWrappedText(ctx, w, h) {
+  _drawWrappedText(ctx, w, h, dpr = 1) {
     const text = this.state.text !== undefined && this.state.text !== null ? String(this.state.text) : '';
-    let fontSize = this.state.fontSize;
-    const paddingX = Math.round(w * 0.18);
-    const paddingY = Math.round(h * 0.18);
-    const maxTextWidth = Math.max(40, w - paddingX * 2);
-    const maxTextHeight = Math.max(30, h - paddingY * 2);
+    const fontSize = (this.state.fontSize || 34) * dpr;
 
     // 빈 텍스트인 경우 배경만 남김 (T03-C14 빈 문구 대응)
     if (text.trim().length === 0) {
       return;
     }
 
-    // 텍스트 줄바꿈 및 높이 계산 헬퍼
-    const layoutLines = (size) => {
-      ctx.font = `600 ${size}px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Noto Sans KR", "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", sans-serif`;
-      const lineHeight = Math.round(size * 1.35);
-      const rawParagraphs = text.split('\n');
-      const lines = [];
+    const lines = text.split('\n');
+    const lineHeight = Math.round(fontSize * 1.35);
+    const totalHeight = lines.length * lineHeight;
 
-      for (const para of rawParagraphs) {
-        if (para.length === 0) {
-          lines.push('');
-          continue;
-        }
-
-        let currentLine = '';
-        const chars = Array.from(para);
-
-        for (let i = 0; i < chars.length; i++) {
-          const testLine = currentLine + chars[i];
-          const metrics = ctx.measureText(testLine);
-          if (metrics.width > maxTextWidth && currentLine.length > 0) {
-            lines.push(currentLine);
-            currentLine = chars[i];
-          } else {
-            currentLine = testLine;
-          }
-        }
-        if (currentLine.length > 0) {
-          lines.push(currentLine);
-        }
-      }
-      return { lines, lineHeight, totalHeight: lines.length * lineHeight };
-    };
-
-    // 캔버스 크기에 비례하여 텍스트 영역이 상하좌우 20% 여백 내에 꼭 맞도록 폰트 자동 스케일
-    let layout = layoutLines(fontSize);
-    while ((layout.totalHeight > maxTextHeight || layout.lines.some(l => ctx.measureText(l).width > maxTextWidth)) && fontSize > 14) {
-      fontSize = Math.max(12, Math.floor(fontSize * 0.90));
-      layout = layoutLines(fontSize);
-    }
-
-    const { lines, lineHeight, totalHeight } = layout;
-
-    // 폰트 스타일 최종 설정
+    // 폰트 스타일 최종 설정 (사용자가 지정한 크기 그대로 렌더링)
     ctx.font = `600 ${fontSize}px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Noto Sans KR", "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", sans-serif`;
     ctx.fillStyle = this.state.fontColor;
     ctx.textAlign = 'center';
