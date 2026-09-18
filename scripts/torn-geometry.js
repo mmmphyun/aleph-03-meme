@@ -154,19 +154,17 @@ export function createTornRectangleShape(width = 3, height = 2, options = {}) {
       }
 
       // 엔벨로프: 양 끝 코너에서는 0, 중간에서는 1
-      const envelope = Math.pow(Math.sin(Math.PI * t), 0.45);
+      const envelope = Math.pow(Math.sin(Math.PI * t), 0.75);
 
-      // 다중 주파수 사인파 (낮은 굴곡 + 중간 굴곡)
+      // 완만한 유기적 사인파 (고주파 배제)
       const sineWave =
-        0.55 * Math.sin(t * Math.PI * 4.0 + edgeIndex * 1.7) +
-        0.30 * Math.sin(t * Math.PI * 11.0 + edgeIndex * 3.1) +
-        0.15 * Math.sin(t * Math.PI * 23.0 + edgeIndex * 5.3);
+        0.70 * Math.sin(t * Math.PI * 2.0 + edgeIndex * 1.5) +
+        0.30 * Math.sin(t * Math.PI * 4.0 + edgeIndex * 2.8);
 
-      // 고주파 FBM 섬유 노이즈
-      const noiseSample = noise.fbm(t * 8.0 + edgeIndex * 13.7, edgeIndex * 7.1, 4);
+      // 2D 저주파 FBM 종이 질감 노이즈
+      const noiseVal = noise.fbm(t * 3.5 + edgeIndex * 5.0, edgeIndex * 3.0, 2);
 
-      // 결합 변위 계산
-      const displacement = (sineWave * 0.45 + noiseSample * 0.55) * roughness * envelope;
+      const displacement = (sineWave * 0.60 + noiseVal * 0.40) * (roughness * 0.60) * Math.min(width, height) * envelope;
 
       const px = baseX + normalX * displacement;
       const py = baseY + normalY * displacement;
@@ -336,19 +334,18 @@ export function createTornPolygonShape(points = [], options = {}) {
       // 양 끝점에서는 다각형 원래 꼭짓점 위치로 수렴 (연결성 보장)
       if (j > 0 && j < steps) {
         // 엔벨로프 커브 (0 -> 1 -> 0)
-        const envelope = Math.pow(Math.sin(Math.PI * t), 0.45);
+        const envelope = Math.pow(Math.sin(Math.PI * t), 0.75);
 
-        // 다중 주파수 사인파 (대/중/소 요철 복합)
+        // 부드러운 유기적 손 찢김 사인파 (가시/톱니 스파이크 배제)
         const sineWave =
-          0.55 * Math.sin(t * Math.PI * 4.0 + segIdx * 1.7) +
-          0.30 * Math.sin(t * Math.PI * 11.0 + segIdx * 3.1) +
-          0.15 * Math.sin(t * Math.PI * 23.0 + segIdx * 5.3);
+          0.65 * Math.sin(t * Math.PI * 2.0 + segIdx * 1.3) +
+          0.35 * Math.sin(t * Math.PI * 5.0 + segIdx * 2.7);
 
-        // 2D FBM 고주파 섬유 노이즈
-        const noiseSample = noise.fbm(t * 8.0 + segIdx * 13.7, segIdx * 7.1, 4);
+        // 2D 저주파 FBM 부드러운 종이 섬유 노이즈
+        const noiseSample = noise.fbm(t * 3.5 + segIdx * 4.1, segIdx * 2.3, 2);
 
-        // 결합 변위 적용
-        const displacement = (sineWave * 0.45 + noiseSample * 0.55) * roughness * envelope;
+        // 부드러운 결합 변위 적용
+        const displacement = (sineWave * 0.60 + noiseSample * 0.40) * (roughness * 0.65) * envelope;
 
         px += nx * displacement;
         py += ny * displacement;

@@ -766,8 +766,31 @@ export class CropTool {
     }
     bgCtx.restore();
 
-    this.currentPunchedCanvas = punchedBgCanvas;
-    this.currentPunchedImage = this.currentImage;
+    // 구멍 난 테두리에 흰색 찢김 종이 섬유 림(White Torn Hole Rim) 렌더링
+    bgCtx.save();
+    bgCtx.strokeStyle = 'rgba(247, 245, 240, 0.95)';
+    bgCtx.lineWidth = Math.max(3, Math.round(origW * 0.006));
+    bgCtx.shadowColor = 'rgba(0, 0, 0, 0.4)';
+    bgCtx.shadowBlur = 4;
+    bgCtx.beginPath();
+
+    if (this.shapeType === 'polygon' && this.lassoPoints && this.lassoPoints.length >= 3) {
+      bgCtx.moveTo(this.lassoPoints[0].x * origW, this.lassoPoints[0].y * origH);
+      for (let i = 1; i < this.lassoPoints.length; i++) {
+        bgCtx.lineTo(this.lassoPoints[i].x * origW, this.lassoPoints[i].y * origH);
+      }
+      bgCtx.closePath();
+      bgCtx.stroke();
+    } else if (this.shapeType === 'circle') {
+      const cx = sx + sw / 2;
+      const cy = sy + sh / 2;
+      const r = Math.min(sw, sh) / 2;
+      bgCtx.arc(cx, cy, r, 0, Math.PI * 2);
+      bgCtx.stroke();
+    } else {
+      bgCtx.strokeRect(sx, sy, sw, sh);
+    }
+    bgCtx.restore();
 
     const result = {
       texture,

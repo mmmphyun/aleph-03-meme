@@ -336,7 +336,23 @@ class PaperStudioApp {
    * 찢겨진 메모지 텍스트 라벨 컨트롤러 바인딩 (T03-C03, C06, C07, C08, C14)
    */
   bindMemoLabelControls() {
-    if (!this.memoEngine) return;
+    // 0. 문구 생성/리셋 버튼 (T03-C03)
+    const addMemoBtn = document.getElementById('btn-add-memo');
+    if (addMemoBtn) {
+      addMemoBtn.addEventListener('click', () => {
+        if (this.memoEngine) {
+          if (!this.memoEngine.mesh || !this.sceneManager.layers.includes(this.memoEngine.mesh)) {
+            this.memoEngine._initMesh();
+            this.memoEngine.renderCanvas();
+          }
+          this.memoEngine.setPosition(0.0, -1.2);
+          this.memoEngine.setScale(1.0);
+          this.syncMemoUIFromEngine();
+          this.selectLayer(this.memoEngine.mesh);
+          this.showToast('📝 찢겨진 텍스트 메모지가 씬에 배치되었습니다.', 'success');
+        }
+      });
+    }
 
     // 1. 문구 내용 입력 (T03-C03, C14)
     const textInput = document.getElementById('input-memo-text');
@@ -655,6 +671,23 @@ class PaperStudioApp {
         bgMesh.position.set(0, 0, 0.00);
         bgMesh.castShadow = true;
         bgMesh.receiveShadow = true;
+
+        // 필름 사진 흰색 외곽 인화지 보더 (Film Photo Border)
+        const borderMargin = 0.22;
+        const borderGeo = new THREE.PlaneGeometry(bgWidth + borderMargin, bgHeight + borderMargin);
+        const borderMat = new THREE.MeshStandardMaterial({
+          color: 0xfcfbf7,
+          roughness: 0.92,
+          metalness: 0.01,
+          side: THREE.FrontSide
+        });
+        const borderMesh = new THREE.Mesh(borderGeo, borderMat);
+        borderMesh.position.set(0, 0, -0.002);
+        borderMesh.castShadow = true;
+        borderMesh.receiveShadow = true;
+        bgMesh.add(borderMesh);
+        bgMesh.filmBorderMesh = borderMesh;
+
         bgMesh.userData = {
           id: 'layer_backdrop',
           name: '🖼️ 배경 레이어 (오려진 원본)',
