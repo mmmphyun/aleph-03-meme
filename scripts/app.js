@@ -54,9 +54,10 @@ class PaperStudioApp {
       onAddPiece: (cropData) => this.handleAddCroppedPiece(cropData)
     });
 
-    // 3. 찢겨진 메모지 텍스트 라벨 엔진 초기화 (Milestone 3)
+    // 3. 찢겨진 메모지 텍스트 라벨 엔진 초기화 (초기 비표시 백지 상태 유지)
     this.memoEngine = new MemoLabelEngine({
       sceneManager: this.sceneManager,
+      autoAddToScene: false,
       onUpdate: () => this.syncMemoUIFromEngine()
     });
 
@@ -94,88 +95,20 @@ class PaperStudioApp {
   }
 
   /**
-   * 초기 실행 시 감상용 기본 다층 찢긴 종이 메쉬 2종 배치
-   * - 하위 사각형 종이 (Z = 0.00)
-   * - 상위 원형 종이 (Z = 0.15)
+   * 초기 접속 시 완전한 백지 상태 보장
+   * - 기본 사각/원형 조각 2개 생성 제거
+   * - 초기 기동 시 씬 및 레이어 목록 0개 유지
    */
   setupInitialSampleLayers() {
     this.sceneManager.clearPaperLayers();
     this.layers = [];
+    this.selectedLayer = null;
 
-    // [Layer 1: 하위 사각 찢긴 종이]
-    const rectMesh = createTornPaperMesh(
-      'rectangle',
-      {
-        width: 4.0,
-        height: 2.8,
-        roughness: this.roughness,
-        detail: 70,
-        seed: this.currentSeed,
-        extrudeOptions: {
-          depth: 0.03,
-          bevelEnabled: true,
-          bevelThickness: 0.005,
-          bevelSize: 0.005
-        }
-      },
-      {
-        color: 0xede8dc,
-        roughness: 0.88
-      }
-    );
-    rectMesh.position.set(-0.2, -0.1, 0.0);
-    rectMesh.userData = {
-      id: 'layer_init_1',
-      name: '기본 사각 종이',
-      shapeType: 'rectangle',
-      width: 4.0,
-      height: 2.8,
-      roughness: this.roughness,
-      seed: this.currentSeed,
-      color: '#ede8dc',
-      textureDataUrl: null,
-      zIndex: 0.0
-    };
-    this.sceneManager.addPaperMesh(rectMesh, 0.0);
-    this.layers.push(rectMesh);
+    if (this.memoEngine) {
+      this.memoEngine.hide();
+    }
 
-    // [Layer 2: 상위 원형 찢긴 종이 (Z = 0.15)]
-    const circleMesh = createTornPaperMesh(
-      'circle',
-      {
-        radius: 1.25,
-        roughness: this.roughness * 0.9,
-        segments: 150,
-        seed: this.currentSeed + 137,
-        extrudeOptions: {
-          depth: 0.03,
-          bevelEnabled: true,
-          bevelThickness: 0.005,
-          bevelSize: 0.005
-        }
-      },
-      {
-        color: 0xfcfbf7,
-        roughness: 0.90
-      }
-    );
-    circleMesh.position.set(0.65, 0.45, 0.15);
-    circleMesh.userData = {
-      id: 'layer_init_2',
-      name: '기본 원형 스티커',
-      shapeType: 'circle',
-      radius: 1.25,
-      roughness: this.roughness * 0.9,
-      seed: this.currentSeed + 137,
-      color: '#fcfbf7',
-      textureDataUrl: null,
-      zIndex: 0.15
-    };
-    this.sceneManager.addPaperMesh(circleMesh, 0.15);
-    this.layers.push(circleMesh);
-
-    // 상위 레이어 기본 선택
-    this.selectLayer(circleMesh);
+    this.selectLayer(null);
     this.updateLayerListUI();
   }
 
@@ -336,20 +269,25 @@ class PaperStudioApp {
    * 찢겨진 메모지 텍스트 라벨 컨트롤러 바인딩 (T03-C03, C06, C07, C08, C14)
    */
   bindMemoLabelControls() {
-    // 0. 문구 생성/리셋 버튼 (T03-C03)
+    // 0. 문구 생성/리셋 버튼 (T03-C03): 클릭 시에만 메모지 씬 배치 및 독립 레이어 등록
     const addMemoBtn = document.getElementById('btn-add-memo');
     if (addMemoBtn) {
       addMemoBtn.addEventListener('click', () => {
         if (this.memoEngine) {
-          if (!this.memoEngine.mesh || !this.sceneManager.layers.includes(this.memoEngine.mesh)) {
-            this.memoEngine._initMesh();
-            this.memoEngine.renderCanvas();
-          }
-          this.memoEngine.setPosition(0.0, -1.2);
+          this.memoEngine.show();
+          this.memoEngine.renderCanvas();
+          this.memoEngine.setPosition(0.0, -0.6);
           this.memoEngine.setScale(1.0);
+
+          // 독립 레이어로 layers 목록에 등록
+          if (this.memoEngine.mesh && !this.layers.includes(this.memoEngine.mesh)) {
+            this.layers.push(this.memoEngine.mesh);
+          }
+
           this.syncMemoUIFromEngine();
           this.selectLayer(this.memoEngine.mesh);
-          this.showToast('📝 찢겨진 텍스트 메모지가 씬에 배치되었습니다.', 'success');
+          this.updateLayerListUI();
+          this.showToast('📝 텍스트 메모지가 씬에 배치되었습니다.', 'success');
         }
       });
     }
@@ -407,6 +345,9 @@ class PaperStudioApp {
         const x = parseFloat(e.target.value);
         if (memoXVal) memoXVal.textContent = x.toFixed(2);
         this.memoEngine.setPosition(x, this.memoEngine.state.posY);
+        if (this.selectedLayer && (this.selectedLayer === this.memoEngine.mesh || this.selectedLayer.userData?.isMemoLabel)) {
+          this.syncTransformUI();
+        }
       });
     }
 
@@ -415,6 +356,9 @@ class PaperStudioApp {
         const y = parseFloat(e.target.value);
         if (memoYVal) memoYVal.textContent = y.toFixed(2);
         this.memoEngine.setPosition(this.memoEngine.state.posX, y);
+        if (this.selectedLayer && (this.selectedLayer === this.memoEngine.mesh || this.selectedLayer.userData?.isMemoLabel)) {
+          this.syncTransformUI();
+        }
       });
     }
 
@@ -426,6 +370,9 @@ class PaperStudioApp {
         const scale = parseFloat(e.target.value);
         if (memoScaleVal) memoScaleVal.textContent = `${scale.toFixed(2)}×`;
         this.memoEngine.setScale(scale);
+        if (this.selectedLayer && (this.selectedLayer === this.memoEngine.mesh || this.selectedLayer.userData?.isMemoLabel)) {
+          this.syncTransformUI();
+        }
       });
     }
   }
@@ -951,6 +898,10 @@ class PaperStudioApp {
         const val = parseFloat(e.target.value);
         this.selectedLayer.position.x = val;
         if (valX) valX.textContent = val.toFixed(2);
+        if (this.memoEngine && (this.selectedLayer === this.memoEngine.mesh || this.selectedLayer.userData?.isMemoLabel)) {
+          this.memoEngine.state.posX = val;
+          this.syncMemoUIFromEngine();
+        }
       });
     }
 
@@ -960,6 +911,10 @@ class PaperStudioApp {
         const val = parseFloat(e.target.value);
         this.selectedLayer.position.y = val;
         if (valY) valY.textContent = val.toFixed(2);
+        if (this.memoEngine && (this.selectedLayer === this.memoEngine.mesh || this.selectedLayer.userData?.isMemoLabel)) {
+          this.memoEngine.state.posY = val;
+          this.syncMemoUIFromEngine();
+        }
       });
     }
 
@@ -978,6 +933,10 @@ class PaperStudioApp {
         const scale = parseFloat(e.target.value);
         this.selectedLayer.scale.set(scale, scale, 1);
         if (valScale) valScale.textContent = `${scale.toFixed(2)}×`;
+        if (this.memoEngine && (this.selectedLayer === this.memoEngine.mesh || this.selectedLayer.userData?.isMemoLabel)) {
+          this.memoEngine.state.scale = scale;
+          this.syncMemoUIFromEngine();
+        }
       });
     }
 
@@ -988,6 +947,9 @@ class PaperStudioApp {
         const z = parseFloat(e.target.value);
         this.selectedLayer.position.z = z;
         this.selectedLayer.userData.zIndex = z;
+        if (this.memoEngine && (this.selectedLayer === this.memoEngine.mesh || this.selectedLayer.userData?.isMemoLabel)) {
+          this.memoEngine.state.posZ = z;
+        }
         if (valZ) valZ.textContent = z.toFixed(2);
         const zEl = document.getElementById('selected-piece-z');
         if (zEl) zEl.textContent = `Z: ${z.toFixed(2)}`;
@@ -1008,7 +970,13 @@ class PaperStudioApp {
       this.backdropLayerMesh = null;
     }
 
-    this.sceneManager.removePaperMesh(mesh);
+    // 메모지 레이어인 경우 memoEngine도 씬에서 안전하게 제거 및 숨김
+    if (this.memoEngine && (mesh === this.memoEngine.mesh || mesh.userData?.isMemoLabel)) {
+      this.memoEngine.hide();
+    } else {
+      this.sceneManager.removePaperMesh(mesh);
+    }
+
     this.layers.splice(idx, 1);
 
     if (this.layers.length > 0) {
@@ -1085,17 +1053,21 @@ class PaperStudioApp {
       }
 
       const isBackdrop = mesh.userData.isBackdropLayer;
+      const isMemo = mesh.userData.isMemoLabel || (this.memoEngine && mesh === this.memoEngine.mesh);
       const isCircle = mesh.userData.shapeType === 'circle';
-      const shapeIcon = isBackdrop
-        ? '🖼️'
-        : (mesh.userData.name && mesh.userData.name.includes('✂️')
-          ? '✂️'
-          : (isCircle ? '●' : '■'));
+      const shapeIcon = isMemo
+        ? '📝'
+        : (isBackdrop
+          ? '🖼️'
+          : (mesh.userData.name && mesh.userData.name.includes('✂️')
+            ? '✂️'
+            : (isCircle ? '●' : '■')));
+      const layerTitle = isMemo ? '📝 텍스트 메모지' : (mesh.userData.name || '종이 조각');
 
       li.innerHTML = `
         <div class="layer-badge">${shapeIcon}</div>
         <div class="layer-meta">
-          <span class="layer-title">${mesh.userData.name}</span>
+          <span class="layer-title">${layerTitle}</span>
           <span class="layer-sub">L${idx + 1} | Z: ${mesh.position.z.toFixed(2)} | 스케일: ${mesh.scale.x.toFixed(2)}×</span>
         </div>
         <div class="layer-item-actions">
@@ -1158,6 +1130,7 @@ class PaperStudioApp {
         name: ud.name || `종이 조각 #${index + 1}`,
         shapeType: ud.shapeType || 'rectangle',
         isBackdropLayer: Boolean(ud.isBackdropLayer),
+        isMemoLabel: Boolean(ud.isMemoLabel || (this.memoEngine && mesh === this.memoEngine.mesh)),
         width: ud.cropData?.width || ud.width || 4.0,
         height: ud.cropData?.height || ud.height || 2.8,
         radius: ud.cropData?.radius || ud.radius || 1.25,
@@ -1391,7 +1364,10 @@ class PaperStudioApp {
       } else {
         this.memoEngine.fromJSON(snapshot.text);
       }
+      this.memoEngine.show();
       this.syncMemoUIFromEngine();
+    } else if (this.memoEngine) {
+      this.memoEngine.hide();
     }
 
     // 4. 기존 종이 레이어 비우고 새 레이어 비동기 재구축
@@ -1400,10 +1376,19 @@ class PaperStudioApp {
 
     if (Array.isArray(snapshot.layers)) {
       for (const layerData of snapshot.layers) {
+        // 메모지 라벨은 memoEngine을 통해 단일 관리되므로 일반 종이 메쉬 재생성 건너뜀
+        if (layerData.isMemoLabel || layerData.id === 'layer_memo_label') {
+          continue;
+        }
         const mesh = await this.createLayerMeshFromData(layerData);
         this.sceneManager.addPaperMesh(mesh, mesh.position.z);
         this.layers.push(mesh);
       }
+    }
+
+    // 메모지가 활성화된 상태라면 layers 목록에도 독립 레이어로 등록
+    if (this.memoEngine && this.memoEngine.isVisible() && !this.layers.includes(this.memoEngine.mesh)) {
+      this.layers.push(this.memoEngine.mesh);
     }
 
     // 최상단 레이어 선택

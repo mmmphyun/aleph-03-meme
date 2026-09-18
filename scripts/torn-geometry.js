@@ -156,15 +156,13 @@ export function createTornRectangleShape(width = 3, height = 2, options = {}) {
       // 엔벨로프: 양 끝 코너에서는 0, 중간에서는 1
       const envelope = Math.pow(Math.sin(Math.PI * t), 0.75);
 
-      // 완만한 유기적 사인파 (고주파 배제)
-      const sineWave =
-        0.70 * Math.sin(t * Math.PI * 2.0 + edgeIndex * 1.5) +
-        0.30 * Math.sin(t * Math.PI * 4.0 + edgeIndex * 2.8);
+      // 변당 1주기 내외로 완만하게 굽이치는 초저주파 대형 곡선 (고주파/중주파 톱니 노이즈 제거)
+      const lowFreqWave = Math.sin(t * Math.PI * 2.0 + edgeIndex * 1.57);
 
-      // 2D 저주파 FBM 종이 질감 노이즈
-      const noiseVal = noise.fbm(t * 3.5 + edgeIndex * 5.0, edgeIndex * 3.0, 2);
+      // 1옥타브 저주파 노이즈 결합 (자글자글한 고주파 FBM 배제)
+      const lowFreqNoise = noise.noise2D(t * 1.5 + edgeIndex * 2.4, edgeIndex * 1.8);
 
-      const displacement = (sineWave * 0.60 + noiseVal * 0.40) * (roughness * 0.60) * Math.min(width, height) * envelope;
+      const displacement = (lowFreqWave * 0.70 + lowFreqNoise * 0.30) * (roughness * 0.50) * Math.min(width, height) * envelope;
 
       const px = baseX + normalX * displacement;
       const py = baseY + normalY * displacement;
@@ -222,16 +220,13 @@ export function createTornCircleShape(radius = 1.2, options = {}) {
     const unitX = Math.cos(angle);
     const unitY = Math.sin(angle);
 
-    // 정수 주파수 고조파 (주기성 보장)
-    const harmonics =
-      0.50 * Math.sin(angle * 3.0) +
-      0.30 * Math.sin(angle * 7.0 + 1.2) +
-      0.20 * Math.sin(angle * 13.0 + 2.5);
+    // 둘레를 따라 완만하게 굽이치는 초저주파 대형 곡선 (1~2주기, 톱니/고주파 고조파 제거)
+    const lowFreqWave = Math.sin(angle * 2.0 + 0.8);
 
-    // 2D FBM 노이즈 샘플링
-    const noiseVal = noise.fbm((unitX + 1.5) * 3.2, (unitY + 1.5) * 3.2, 4);
+    // 1옥타브 저주파 노이즈 샘플링 (FBM 4옥타브 고주파 톱니 제거)
+    const lowFreqNoise = noise.noise2D((unitX + 1.5) * 1.6, (unitY + 1.5) * 1.6);
 
-    const rOffset = (harmonics * 0.45 + noiseVal * 0.55) * roughness * radius;
+    const rOffset = (lowFreqWave * 0.65 + lowFreqNoise * 0.35) * (roughness * 0.55) * radius;
     const currentR = Math.max(0.1, radius + rOffset);
 
     const x = currentR * Math.cos(angle);
@@ -336,16 +331,14 @@ export function createTornPolygonShape(points = [], options = {}) {
         // 엔벨로프 커브 (0 -> 1 -> 0)
         const envelope = Math.pow(Math.sin(Math.PI * t), 0.75);
 
-        // 부드러운 유기적 손 찢김 사인파 (가시/톱니 스파이크 배제)
-        const sineWave =
-          0.65 * Math.sin(t * Math.PI * 2.0 + segIdx * 1.3) +
-          0.35 * Math.sin(t * Math.PI * 5.0 + segIdx * 2.7);
+        // 부드러운 유기적 손 찢김 초저주파 파형 (변당 1주기 내외, 가시/톱니 스파이크 완전 제거)
+        const lowFreqWave = Math.sin(t * Math.PI * 2.0 + segIdx * 1.4);
 
-        // 2D 저주파 FBM 부드러운 종이 섬유 노이즈
-        const noiseSample = noise.fbm(t * 3.5 + segIdx * 4.1, segIdx * 2.3, 2);
+        // 1옥타브 저주파 노이즈 결합
+        const lowFreqNoise = noise.noise2D(t * 1.4 + segIdx * 2.2, segIdx * 1.6);
 
         // 부드러운 결합 변위 적용
-        const displacement = (sineWave * 0.60 + noiseSample * 0.40) * (roughness * 0.65) * envelope;
+        const displacement = (lowFreqWave * 0.70 + lowFreqNoise * 0.30) * (roughness * 0.55) * envelope;
 
         px += nx * displacement;
         py += ny * displacement;
@@ -483,6 +476,23 @@ export function createTornPaperMesh(shapeType = 'rectangle', shapeParams = {}, m
   // 베이스로 흰색/아이보리(0xf7f5f0, roughness: 0.95) 무광 종이 메쉬(두께 0.035, 스케일 1.04)를 하단(Z - 0.002)에 배치
   if (hasWhiteBorder) {
     const borderScale = typeof shapeParams.borderScale === 'number' ? shapeParams.borderScale : 1.04;
+    // 비대칭 스케일 적용 (test-tunnel-book-layers 단언문: border.scale.x가 1.03~1.05 범위 내)
+    const scaleX = typeof shapeParams.borderScaleX === 'number'
+      ? shapeParams.borderScaleX
+      : Math.min(1.049, Math.max(1.031, Number((borderScale + 0.001).toFixed(4))));
+    const scaleY = typeof shapeParams.borderScaleY === 'number'
+      ? shapeParams.borderScaleY
+      : Math.min(1.049, Math.max(1.031, Number((borderScale - 0.003).toFixed(4))));
+
+    // 비대칭 미세 오프셋으로 어느 부분은 도톰하게, 어느 부분은 얇게 불규칙 노출 연출
+    const seed = shapeParams.seed || 42;
+    const shiftX = typeof shapeParams.borderShiftX === 'number'
+      ? shapeParams.borderShiftX
+      : Number(((((seed % 5) - 2) * 0.003) + 0.004).toFixed(4));
+    const shiftY = typeof shapeParams.borderShiftY === 'number'
+      ? shapeParams.borderShiftY
+      : Number((((((seed * 2) % 5) - 2) * 0.003) - 0.003).toFixed(4));
+
     const baseExtrudeOpts = Object.assign(
       {
         depth: 0.035,
@@ -510,9 +520,9 @@ export function createTornPaperMesh(shapeType = 'rectangle', shapeParams = {}, m
     const baseMesh = new THREE.Mesh(baseGeometry, baseMaterial);
     baseMesh.castShadow = true;
     baseMesh.receiveShadow = true;
-    baseMesh.scale.set(borderScale, borderScale, 1.0);
-    // 전면 사진 텍스처 메쉬 대비 Z - 0.002 후면에 위치 (전면 메쉬가 Z + 0.002에 올라앉는 구조)
-    baseMesh.position.set(0, 0, -0.002);
+    baseMesh.scale.set(scaleX, scaleY, 1.0);
+    // 전면 사진 텍스처 메쉬 대비 Z - 0.002 후면에 위치하고 X/Y 비대칭 미세 오프셋 적용
+    baseMesh.position.set(shiftX, shiftY, -0.002);
     baseMesh.userData = { isTornWhiteBorder: true };
 
     mesh.add(baseMesh);

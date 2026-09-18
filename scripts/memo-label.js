@@ -20,19 +20,19 @@ export class MemoLabelEngine {
     this.sceneManager = options.sceneManager;
     this.onUpdate = options.onUpdate || (() => {});
 
-    // 라벨 상태 설정 (기본값)
+    // 라벨 상태 설정 (기본값: 2.6x1.1 콤팩트 크기)
     this.state = {
       text: '찢겨진 종이 위에 남긴\n영감의 한 줄 ✂️✨',
-      fontSize: 42,             // 캔버스 픽셀 기준 (18 ~ 84)
+      fontSize: 34,             // 캔버스 픽셀 기준 (18 ~ 84)
       fontColor: '#1a1c20',     // 폰트 색상
       paperColor: '#fbf8ef',    // 메모지 배경 톤
       posX: 0.0,                // 3D 공간 X
-      posY: -1.2,               // 3D 공간 Y
+      posY: -0.6,               // 3D 공간 Y
       posZ: 0.45,               // Z-Stack 최상단 높이
       scale: 1.0,               // 전체 크기 배율
-      baseWidth: 3.8,           // 3D 세계 폭
-      baseHeight: 1.8,          // 3D 세계 높이
-      roughness: 0.08,
+      baseWidth: 2.6,           // 3D 세계 폭 (3.8 -> 2.6 콤팩트 축소)
+      baseHeight: 1.1,          // 3D 세계 높이 (1.8 -> 1.1 콤팩트 축소)
+      roughness: 0.075,
       seed: 88192
     };
 
@@ -47,22 +47,27 @@ export class MemoLabelEngine {
     this.texture = null;
     this.mesh = null;
 
-    this._initMesh();
+    // 초기 기동 시 완전한 백지 상태 유지를 위해 씬에 미리 추가하지 않음 (autoAddToScene: false)
+    const autoAddToScene = options.autoAddToScene ?? false;
+    this._initMesh(autoAddToScene);
     this.renderCanvas();
   }
 
   /**
-   * 3D 메모지 메쉬 초기화 및 씬 추가
+   * 3D 메모지 메쉬 초기화 (autoAddToScene이 true일 때만 씬에 배치)
+   * @param {boolean} [addToScene=false]
    * @private
    */
-  _initMesh() {
-    this.texture = new THREE.CanvasTexture(this.canvas);
-    this.texture.generateMipmaps = true;
-    this.texture.minFilter = THREE.LinearMipmapLinearFilter;
-    this.texture.magFilter = THREE.LinearFilter;
-    this.texture.colorSpace = THREE.SRGBColorSpace;
+  _initMesh(addToScene = false) {
+    if (!this.texture) {
+      this.texture = new THREE.CanvasTexture(this.canvas);
+      this.texture.generateMipmaps = true;
+      this.texture.minFilter = THREE.LinearMipmapLinearFilter;
+      this.texture.magFilter = THREE.LinearFilter;
+      this.texture.colorSpace = THREE.SRGBColorSpace;
+    }
 
-    // 찢긴 사각형 메쉬 생성
+    // 찢긴 사각형 메쉬 생성 (2.6x1.1 콤팩트 비율)
     this.mesh = createTornPaperMesh(
       'rectangle',
       {
@@ -87,16 +92,55 @@ export class MemoLabelEngine {
 
     this.mesh.position.set(this.state.posX, this.state.posY, this.state.posZ);
     this.mesh.scale.set(this.state.scale, this.state.scale, 1);
+    this.mesh.visible = addToScene;
 
     this.mesh.userData = {
       id: 'layer_memo_label',
-      name: '찢겨진 메모지 라벨',
+      name: '📝 텍스트 메모지',
       isMemoLabel: true,
+      shapeType: 'rectangle',
+      width: this.state.baseWidth,
+      height: this.state.baseHeight,
       zIndex: this.state.posZ
     };
 
-    // 씬에 추가
-    this.sceneManager.addPaperMesh(this.mesh, this.state.posZ);
+    if (addToScene && this.sceneManager) {
+      this.sceneManager.addPaperMesh(this.mesh, this.state.posZ);
+    }
+  }
+
+  /**
+   * 메모지 메쉬를 씬에 활성화 및 표시
+   */
+  show() {
+    if (!this.mesh) {
+      this._initMesh(true);
+    } else {
+      this.mesh.visible = true;
+      if (this.sceneManager && !this.sceneManager.layers.includes(this.mesh)) {
+        this.sceneManager.addPaperMesh(this.mesh, this.state.posZ);
+      }
+    }
+  }
+
+  /**
+   * 메모지 메쉬를 씬에서 비활성화 및 숨김
+   */
+  hide() {
+    if (this.mesh) {
+      this.mesh.visible = false;
+      if (this.sceneManager) {
+        this.sceneManager.removePaperMesh(this.mesh);
+      }
+    }
+  }
+
+  /**
+   * 씬 표시 여부 확인
+   * @returns {boolean}
+   */
+  isVisible() {
+    return Boolean(this.mesh && this.mesh.visible && this.sceneManager && this.sceneManager.layers.includes(this.mesh));
   }
 
   /**
@@ -163,8 +207,8 @@ export class MemoLabelEngine {
   _drawWrappedText(ctx, w, h) {
     const text = this.state.text !== undefined && this.state.text !== null ? String(this.state.text) : '';
     let fontSize = this.state.fontSize;
-    const paddingX = 70;
-    const paddingY = 40;
+    const paddingX = 36;
+    const paddingY = 22;
     const maxTextWidth = w - paddingX * 2;
     const maxTextHeight = h - paddingY * 2;
 
